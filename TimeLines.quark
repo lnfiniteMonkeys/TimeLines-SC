@@ -1,0 +1,7 @@
+(
+	\name: 			"TimeLines",
+	\summary:		"Classes and SynthDefs to accompany TimeLines, a Haskell live coding library",
+	\author: 			"lnfiniteMonkeys",
+	\since: 				"2018",
+	\dependencies:  []
+)
