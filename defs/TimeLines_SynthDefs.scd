@@ -1,7 +1,9 @@
 (
-SynthDef(\phasor, {
-	arg cycleDur = 1, r = 1;
-	Out.ar(~t,   LFSaw.ar(cycleDur.reciprocal).range(0, r));
+~fadeTime = 3;
+
+SynthDef(\timeSynth, { |dur = 1, loop = 1, t_manualTrig = 0|
+	var loopingTrig = Impulse.kr(1/dur) * loop;
+	Out.ar(~t, Sweep.ar(loopingTrig + t_manualTrig, 1/dur).clip(0, 1));
 }).add;
 
 SynthDef(\reverb, {
@@ -26,11 +28,11 @@ SynthDef(\reverb, {
 SynthDef(\fm, {
 	arg amp, freq, ratio, index, pan;
 
-	var freq_ = BufRd.kr(1, freq, In.ar(~t));
-	var ratio_ = BufRd.kr(1, ratio, In.ar(~t));
-	var index_ = BufRd.kr(1, index, In.ar(~t));
-	var amp_ = BufRd.kr(1, amp, In.ar(~t));
-	var pan_ = BufRd.kr(1, pan, In.ar(~t));
+	var freq_ = BufRd.kr(1, freq, In.ar(~t) * BufFrames.ir(freq));
+	var ratio_ = BufRd.kr(1, ratio, In.ar(~t) * BufFrames.ir(ratio));
+	var index_ = BufRd.kr(1, index, In.ar(~t) * BufFrames.ir(index));
+	var amp_ = BufRd.kr(1, amp, In.ar(~t) * BufFrames.ir(amp));
+	var pan_ = BufRd.kr(1, pan, In.ar(~t) * BufFrames.ir(pan));
 
 	var fade = Env([0, 1], [~fadeTime], \sine).kr(0);
 
@@ -106,7 +108,6 @@ SynthDef(\sawDFM, {
 
 ~noiseFreq = 0.8;
 ~lagTime = 0.9;
-
 SynthDef(\sine4, {
 	arg amp, amp1, freq1, amp2, freq2, amp3, freq3, amp4, freq4;
 
@@ -142,4 +143,6 @@ SynthDef(\sine, {
 	var sig = SinOsc.ar(freq_) * amp_;
 	Out.ar(0, Pan2.ar(sig, pan_));
 }).add;
+
+"SynthDefs loaded".postln;
 )
