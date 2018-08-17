@@ -19,7 +19,6 @@ OSCdef(\TimeLines_loop, {
 	|msg, time, addr, recvPort|
 	var loop = msg[1].asFloat;
 	~timelines.setLoop(loop);
-	"loop %".format(loop).postln;
 }, "/TimeLines/setLoop").add;
 
 OSCdef(\TimeLines_reset, {

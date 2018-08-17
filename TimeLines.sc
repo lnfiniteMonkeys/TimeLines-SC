@@ -1,9 +1,8 @@
 TimeLines {
-
 	var <numChannels, <server;
 	var <bufferDict, <synthDict;
 	var <timeGroup, <synthGroup, <fxGroup, <reverbGroup;
-	var timeSynth, reverbSynth;
+	var timeSynth, reverbSynth, silencerSynth;
 	var <windowDur = 1, <loop = 1;
 
 	*start { |numChannels = 2, server|
@@ -15,6 +14,7 @@ TimeLines {
 			"Booting TimeLines...".postln;
 			~timelines = TimeLines(numChannels, server);
 			~timelines.start;
+			//ServerTree.add(this.start, server);
 			"TimeLines: Initialization completed successfully".postln;
 		};
 
@@ -28,8 +28,10 @@ TimeLines {
 	//Initializing variables, loading defs and preparing the server
 	init {
 		~t = Bus.audio(server, 1);
-		~reverbBus = Bus.audio(server, 2);
-		~out = 0;
+		~silencerBus = Bus.audio(server, 1);
+		~reverbOut = Bus.audio(server, 2);
+		~reverbSilencedBus = Bus.audio(server, 2);
+		~dryOut = Bus.audio(server, 2);
 
 		bufferDict = Dictionary();
 		synthDict = Dictionary();
@@ -43,7 +45,7 @@ TimeLines {
 	}
 
 	start {
-		timeSynth = Synth(\timeSynth, [\dur, windowDur, \loop, loop], timeGroup);
+		timeSynth = Synth(\timer, [\dur, windowDur, \loopPoint, 1], timeGroup);
 		reverbSynth = Synth.new(\reverb,
 			[
 				\amp, 1,
@@ -51,11 +53,13 @@ TimeLines {
 				\revtime, 1.8,
 				\lpf, 4500,
 				\mix, 0.35,
-				\in, ~reverbBus,
-				\out, ~out,
+				\in, ~reverbSilencedBus,
+				\out, 0,
 			],
 			reverbGroup
 		);
+		silencerSynth = Synth(\silencer, target: reverbGroup);
+
 		"TimeLines: TimeSynth started, listening on port 57120".postln;
 	}
 
@@ -65,10 +69,17 @@ TimeLines {
 	}
 
 	resetServer {
-		//Iterate over the buffers and synths, free them and remove the dictionary entries
+		this.freeAll;
+		this.start;
+		"TimeLines: server reset successfully".postln;
+	}
+
+	freeAll {
+		//Iterate over the buffers and synths, free them and remove their dictionary entries
 		bufferDict.keysValuesDo{|key, buff| buff.free; bufferDict.removeAt(key)};
 		synthDict.keysValuesDo{|key, synth| synth.free; synthDict.removeAt(key)};
-		"TimeLines: server reset successfully".postln;
+		timeSynth.free;
+		reverbSynth.free;
 	}
 
 	//Loads a buffer file, creates its synth if it's not already there
@@ -85,6 +96,7 @@ TimeLines {
 		var synth = synthDict[synthName];
 
 		if(synth.isNil, {synthDict.add(synthName -> Synth(synthDef, target: synthGroup))}, {});
+
 		bufferDict[buffName].free;
 		bufferDict.add(buffName -> Buffer.read(server, filePath, action: {|b|
 			synthDict[synthName].set(synthParam, b)}));
@@ -101,7 +113,9 @@ TimeLines {
 
 	setLoop{ |loop|
 		loop = loop;
-		timeSynth.set(\loop, loop);
+		if(loop == 0,
+			{timeSynth.set(\loopPoint, inf)},
+			{timeSynth.set(\loopPoint, 1)})
 	}
 
 	setTimeSynth{ |dur, loop|
