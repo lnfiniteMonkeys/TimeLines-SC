@@ -94,12 +94,14 @@ TimeLines {
 		var synthDef = info[1];
 		var synthParam = info[2].asSymbol;
 		var synth = synthDict[synthName];
+		var oldBuff = bufferDict[buffName];
 
 		if(synth.isNil, {synthDict.add(synthName -> Synth(synthDef, target: synthGroup))}, {});
-
-		bufferDict[buffName].free;
 		bufferDict.add(buffName -> Buffer.read(server, filePath, action: {|b|
-			synthDict[synthName].set(synthParam, b)}));
+			synthDict[synthName].set(synthParam, b);
+			oldBuff.free;
+		}));
+
 	}
 
 	setWindow{ |dur|
