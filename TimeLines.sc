@@ -13,9 +13,9 @@ TimeLines {
 		server.waitForBoot {
 			"Booting TimeLines...".postln;
 			~timelines = TimeLines(numChannels, server);
-			~timelines.start;
-			//ServerTree.add(this.start, server);
-			"TimeLines: Initialization completed successfully".postln;
+			~timelines.startSynths;
+			//ServerTree.add(TimeLines.start, server);
+			"TimeLines: Initialization completed successfully\nListening on port 57120".postln;
 		};
 
 		server.latency = 0.1;
@@ -27,6 +27,12 @@ TimeLines {
 
 	//Initializing variables, loading defs and preparing the server
 	init {
+		this.initVariables;
+		this.loadDefs;
+		server.sync;
+	}
+
+	initVariables {
 		~t = Bus.audio(server, 1);
 		~silencerBus = Bus.audio(server, 1);
 		~reverbOut = Bus.audio(server, 2);
@@ -39,12 +45,15 @@ TimeLines {
 		synthGroup = Group.after(timeGroup);
 		fxGroup = Group.after(synthGroup);
 		reverbGroup = Group.after(fxGroup);
-
-		this.loadDefs;
-		server.sync;
 	}
 
-	start {
+	//Load and execute all files ind the defs folder
+	loadDefs {
+		"defs/*.scd".resolveRelative.loadPaths
+	}
+
+	// Starting the synths
+	startSynths {
 		timeSynth = Synth(\timer, [\dur, windowDur, \loopPoint, 1], timeGroup);
 		reverbSynth = Synth.new(\reverb,
 			[
@@ -59,28 +68,42 @@ TimeLines {
 			reverbGroup
 		);
 		silencerSynth = Synth(\silencer, target: reverbGroup);
-
-		"TimeLines: TimeSynth started, listening on port 57120".postln;
 	}
 
-	//Load and execute all files ind the defs folder
-	loadDefs {
-		"defs/*.scd".resolveRelative.loadPaths
+		freeAll {
+		// Free all busses
+		~t.free;
+		~silencerBus.free;
+		~reverbOut.free;
+		~reverbSilencedBus.free;
+		~dryOut.free;
+
+		// Free all groups and their synths
+		timeGroup.free;
+		synthGroup.free;
+		fxGroup.free;
+		reverbGroup.free;
+
+		// Free all Buffers
+		bufferDict.keysValuesDo{ |key, buff| buff.free; bufferDict.removeAt(key)};
+		/*
+		//Iterate over the buffers and synths, free them and remove their dictionary entries
+		bufferDict.keysValuesDo{ |key, buff| buff.free; bufferDict.removeAt(key)};
+		synthDict.keysValuesDo{ |key, synth| synth.free; synthDict.removeAt(key)};
+		timeSynth.free;
+		reverbSynth.free;
+		*/
 	}
 
-	resetServer {
+	reset {
 		this.freeAll;
-		this.start;
+		this.initVariables;
+		this.loadDefs;
+		this.startSynths;
 		"TimeLines: server reset successfully".postln;
 	}
 
-	freeAll {
-		//Iterate over the buffers and synths, free them and remove their dictionary entries
-		bufferDict.keysValuesDo{|key, buff| buff.free; bufferDict.removeAt(key)};
-		synthDict.keysValuesDo{|key, synth| synth.free; synthDict.removeAt(key)};
-		timeSynth.free;
-		reverbSynth.free;
-	}
+
 
 	//Loads a buffer file, creates its synth if it's not already there
 	//and assigns it to the appropriate argument
@@ -101,7 +124,72 @@ TimeLines {
 			synthDict[synthName].set(synthParam, b);
 			oldBuff.free;
 		}));
+	}
 
+	loadSynthBuffers { |paths|
+		var numBuffs = paths.size;
+		// Get synth info shared by all buffers
+		var synthInfo = paths[0].asString.split(Platform.pathSeparator).reverse[0].split($_)[[0, 1]];
+		// synthName e.g. "bob_fm"
+		var synthName = format("%_%", synthInfo[0], synthInfo[1]).asSymbol;
+		var synthDef = synthInfo[1].asSymbol;
+		var synth = synthDict[synthName];
+
+		var buffers = Dictionary();
+
+		// First, loop over the received paths, load the buffers,
+		// add them to the buffer dictionary and free the old ones
+		paths.do({ |p|
+			var path = p.asString;
+			var buffName = path.split(Platform.pathSeparator).reverse[0].split($.)[0].asSymbol;
+			var param = buffName.asString.split($_)[2].asSymbol;
+			var prevBuff = bufferDict[buffName];
+
+			buffName.postln;
+
+			bufferDict.add(buffName ->
+				Buffer.read(server, path, action:
+					{ |b|
+						prevBuff.free;
+						buffers.add(param -> b);
+				});
+			);
+		});
+
+		// Using a routine for server.sync (?)
+		Routine.run {
+			server.sync;
+
+			// Then, check if the synth already exists
+			if(synth.isNil,
+				{
+					var argList = buffers.getPairs;
+					"synth is nil".postln;
+					// If it doesn't, instantiate it with the buffers as arguments and add it to the dictionary
+					synthDict.add(synthName -> Synth(synthDef, argList, synthGroup))
+				},
+				{
+					// If it does, check to see if its SynthDef matches the one received
+					if(synth.defName != synthDef,
+						{
+							var argList = buffers.getPairs;
+							"synthdefs dont match".postln;
+							//If it doesn't, free it and re-instantiate it
+							synth.free;
+							synthDict.add(synthName -> Synth(synthDef, argList, synthGroup));
+						},
+						{
+							"synthdefs match".postln;
+							// If it does, just update it with the received buffers
+							/*
+							numBuffs.do({ |i|
+							synth.set(params[i], buffers[i]);
+							});
+							*/
+					});
+			});
+			"all done boss".postln;
+		};
 	}
 
 	setWindow{ |dur|

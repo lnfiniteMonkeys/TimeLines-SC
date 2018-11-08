@@ -13,6 +13,12 @@ SynthDef(\timer, {
 		startPoint
 	);
 
+	var trigStart = sig - 0.0001;
+	var trigNext = T2K.kr(sig > 0.8);
+
+	//SendTrig.ar(trigStart, 0, sig);
+	//SendTrig.kr(trigNext, 1, sig);
+
 	Out.kr(~silencerBus, sig);
 	Out.ar(~t, sig.clip(0, 1));
 }).add;
@@ -49,6 +55,34 @@ SynthDef(\reverb, {
 	Out.ar(out, sig);
 }).add;
 
+SynthDef(\noise, {
+	arg amp, freq, rq, pan;
+
+	var freq_ = BufRd.kr(1, freq, In.ar(~t) * BufFrames.kr(freq));
+	var amp_ = BufRd.kr(1, amp, In.ar(~t) * BufFrames.kr(amp));
+	var pan_ = BufRd.kr(1, pan, In.ar(~t) * BufFrames.kr(pan));
+	var rq_ = BufRd.kr(1, rq, In.ar(~t) * BufFrames.kr(rq));
+
+	var fade = Env([0, 1], [~fadeTime], \sine).kr(0);
+	var sig = WhiteNoise.ar();
+	sig = RLPF.ar(sig, freq_, rq_) * amp_ * fade;
+
+	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
+}).add;
+
+SynthDef(\sine, {
+	arg amp, freq, pan;
+
+	var freq_ = BufRd.kr(1, freq, In.ar(~t) * BufFrames.kr(freq));
+	var amp_ = BufRd.kr(1, amp, In.ar(~t) * BufFrames.kr(amp));
+	var pan_ = BufRd.kr(1, pan, In.ar(~t) * BufFrames.kr(pan));
+
+	var fade = Env([0, 1], [~fadeTime], \sine).kr(0);
+	var sig = SinOsc.ar(freq_) * amp_*fade*fade;
+
+	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
+}).add;
+
 SynthDef(\fm, {
 	arg amp, freq, ratio, index, pan;
 
@@ -60,14 +94,14 @@ SynthDef(\fm, {
 
 	var fade = Env([0, 1], [~fadeTime], \sine).kr(0);
 
-	var mod = SinOsc.ar(freq_*ratio_)*index_;
+	var modFreq = freq_*ratio_;
+	var mod = SinOsc.ar(modFreq)*index_;
 	var sig = SinOsc.ar(freq_ + mod) * amp_*fade*fade;
 
 	Out.ar(~reverbOut, Pan2.ar(fade* fade*fade * sig, pan_));
 }).add;
 
-
-SynthDef(\fm2, {
+SynthDef(\fm2Parallel, {
 	arg amp, freq, ratio1, index1, ratio2, index2, pan;
 
 	var freq_ = BufRd.kr(1, freq, In.ar(~t) * BufFrames.kr(freq));
@@ -80,9 +114,33 @@ SynthDef(\fm2, {
 
 	var fade = Env([0, 1], [~fadeTime], \sine).kr(0);
 
-	var mod1 = SinOsc.ar(freq_*ratio1_)*index1_;
-	var mod2 = SinOsc.ar(freq_*ratio2_)*index2_;
+	var modFreq1 = freq_*ratio1_;
+	var modFreq2 = freq_*ratio2_;
+	var mod1 = SinOsc.ar(modFreq1)*index1_;
+	var mod2 = SinOsc.ar(modFreq2)*index2_;
 	var sig = SinOsc.ar(freq_ + mod1 + mod2) * amp_;
+
+	Out.ar(~reverbOut, Pan2.ar(fade * sig, pan_));
+}).add;
+
+SynthDef(\fm2Series, {
+	arg amp, freq, ratio1, index1, ratio2, index2, pan;
+
+	var freq_ = BufRd.kr(1, freq, In.ar(~t) * BufFrames.kr(freq));
+	var ratio1_ = BufRd.kr(1, ratio1, In.ar(~t) * BufFrames.kr(ratio1));
+	var index1_ = BufRd.kr(1, index1, In.ar(~t) * BufFrames.kr(index1));
+	var ratio2_ = BufRd.kr(1, ratio2, In.ar(~t) * BufFrames.kr(ratio2));
+	var index2_ = BufRd.kr(1, index2, In.ar(~t) * BufFrames.kr(index2));
+	var amp_ = BufRd.kr(1, amp, In.ar(~t) * BufFrames.kr(amp));
+	var pan_ = BufRd.kr(1, pan, In.ar(~t) * BufFrames.kr(pan));
+
+	var fade = Env([0, 1], [~fadeTime], \sine).kr(0);
+
+	var modFreq1 = freq_*ratio1_;
+	var modFreq2 = freq_*ratio2_;
+	var mod1 = SinOsc.ar(modFreq1)*index1_;
+	var mod2 = SinOsc.ar(modFreq2+mod1)*index2_;
+	var sig = SinOsc.ar(freq_ + mod2) * amp_;
 
 	Out.ar(~reverbOut, Pan2.ar(fade * sig, pan_));
 }).add;
@@ -131,20 +189,20 @@ SynthDef(\sawDFM, {
 }).add;
 
 ~noiseFreq = 0.8;
-~lagTime = 0.9;
+~lagTime = 0.8;
 SynthDef(\sine4, {
 	|amp, amp1, freq1, amp2, freq2, amp3, freq3, amp4, freq4|
 
 	var t  = In.ar(~t);
 	var amp_ = BufRd.kr(1, amp, t * BufFrames.kr(amp));
 	var amp1_ = BufRd.kr(1, amp1, t * BufFrames.kr(amp1));
-	var freq1_ = BufRd.kr(1, freq1, t * BufFrames.kr(freq1));
+	var freq1_ = BufRd.kr(1, freq1, t * BufFrames.kr(freq1)).lag2(~lagTime);
 	var amp2_ = BufRd.kr(1, amp2, t * BufFrames.kr(amp2));
-	var freq2_ = BufRd.kr(1, freq2, t * BufFrames.kr(freq2));
+	var freq2_ = BufRd.kr(1, freq2, t * BufFrames.kr(freq2)).lag2(~lagTime);
 	var amp3_ = BufRd.kr(1, amp3, t * BufFrames.kr(amp3));
-	var freq3_ = BufRd.kr(1, freq3, t * BufFrames.kr(freq3));
+	var freq3_ = BufRd.kr(1, freq3, t * BufFrames.kr(freq3)).lag2(~lagTime);
 	var amp4_ = BufRd.kr(1, amp4, t * BufFrames.kr(amp4));
-	var freq4_ = BufRd.kr(1, freq4, t * BufFrames.kr(freq4));
+	var freq4_ = BufRd.kr(1, freq4, t * BufFrames.kr(freq4)).lag2(~lagTime);
 
 	var fade = Env([0, 1], [~fadeTime]).kr(0);
 
@@ -168,5 +226,5 @@ SynthDef(\sine, {
 	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
 }).add;
 
-"SynthDefs loaded".postln;
+"TimeLines: SynthDefs loaded".postln;
 )
