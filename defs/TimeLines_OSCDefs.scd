@@ -1,21 +1,36 @@
 (
 OSCdef(\TimeLines_triggers, {
 	|msg, time|
-	msg.postln;
-	if(msg[2] == 0, {
-		//~timelines.loadNextBuffers;
-	});
-
-	if(msg[2] == 1, {
-		//~timelines.askNewBuffers;
-	});
+	if(msg[2] == 0, {~timelines.freeOldBuffers});
+	if(msg[2] == 1, {~timelines.ghcAddress.sendMsg("/incrementWindow", "")});
+	//if(msg[2] == 2, {"start of cycle".postln});
 }, '/tr', s.addr).add;
+
+OSCdef(\TimeLines_synths, {
+	|msg, time, addr, recvPort|
+	~timelines.checkSynthNames(msg.drop(1));
+}, "/TimeLines/synthNames").add;
 
 OSCdef(\TimeLines_load, {
 	|msg, time, addr, recvPort|
-	"loading buffers".postln;
 	~timelines.loadSynthBuffers(msg.drop(1));
 }, "/TimeLines/load").add;
+
+/*
+OSCdef(\TimeLines_loadSynth, {
+	|msg, time, addr, recvPort|
+	"loadSynth".postln;
+	~timelines.loadSynthBuffers(msg.drop(1), 'synth');
+}, "/TimeLines/loadSynth").add;
+
+
+OSCdef(\TimeLines_loadFx, {
+	|msg, time, addr, recvPort|
+	"loadFX".postln;
+	~timelines.loadSynthBuffers(msg.drop(1), 'fx');
+}, "/TimeLines/loadSynth").add;
+*/
+
 
 OSCdef(\TimeLines_play, {
 	|msg, time, addr, recvPort|
@@ -39,14 +54,14 @@ OSCdef(\TimeLines_reset, {
 	~timelines.reset;
 }, "/TimeLines/reset").add;
 
-OSCdef(\TimeLines_plug, {
+OSCdef(\TimeLines_patch, {
 	|msg, time, addr, recvPort|
-	var output = msg[1].split($_)[0];
-	var input = msg[2];
+	//var output = msg[1].split($_)[0];
+	// var input = msg[2];
 
 	msg.postln;
 
-}, "/TimeLines/plug").add;
+}, "/TimeLines/patch").add;
 
 "TimeLines: OSCDefs loaded".postln;
 )

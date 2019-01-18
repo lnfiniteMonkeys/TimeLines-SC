@@ -1,5 +1,163 @@
+
+/*
+(
+// the basic wrapper
+~makeEffect = { |name, func, lags, numChannels = 2|
+    SynthDef(name,
+		{ |inBus, outBus = ~reverbOut, gate = 1, wet = 1|
+			var in, out, t, env;
+			in = In.ar(inputBus, numChannels);
+			env = Linen.kr(gate, 2, 1, 2, 2); // fade in the effect
+
+			// call the wrapped function. The in and env arguments are passed to the function
+			// as the first two arguments (prependArgs).
+			// Any other arguments of the wrapped function will be Controls.
+			out = SynthDef.wrap(func, lags, [in, t]) * env;
+
+			Out.ar(outBus, XFade2.ar(in, out, wet.range(-1, 1)));
+	}).add;
+};
+
+~makeSynth = { |name, func|
+	SynthDef(name,
+		{ |inBus, outBus = 0, gate = 1, pan, amp|
+			var sig, t, env, pan_, amp_;
+
+			t = In.ar(~t);
+			pan_ = BufRd.kr(1, pan, t * BufFrames.kr(pan));
+			amp_ = BufRd.kr(1, amp, t * BufFrames.kr(amp));
+			env = Linen.kr(gate, 2, 1, 2, 2);
+
+			sig = SynthDef.wrap(func, prependArgs: [t]) * env * amp;
+
+			Out.ar(outBus, Pan2.ar(sig, pan_));
+	}).add;
+};
+
+)
+
+(
+~makeSynth.(\sinewave,
+	{ |t, freq|
+		SinOsc.ar(freq);
+});
+)
+
+
+// now make a wah
+(
+~makeEffect.value(\wah, {|in, env, rate = 0.7, ffreq = 1200, depth = 0.8, rq = 0.1|
+    // in and env come from the wrapper. The rest are controls
+     var lfo;
+    lfo = LFNoise1.kr(rate, depth * ffreq, ffreq);
+    RLPF.ar(in, lfo, rq, 10).distort * 0.15; },
+    [0.1, 0.1, 0.1, 0.1],  // lags for rate ffreq, depth and rq
+    2    // numChannels
+);
+)
+
+*/
+
+
+
 (
 ~fadeTime = 3;
+~fadeOutTime = 1;
+~fadeInTime = 1;
+~maxDelayTime = 10;
+
+SynthDef(\noiseLPFdelay, {
+	var t = In.ar(~t);
+	var trig = Changed.ar(t, 0.1);
+
+	var cutoff_ = BufRd.kr(1, Latch.ar(\cutoff.ar(), trig), t * BufFrames.kr(\cutoff.ar())).clip(20, 20000);
+	var resonance_ = BufRd.kr(1, Latch.ar(\resonance.ar(), trig), t * BufFrames.kr(\resonance.ar())).clip(0.01, 5);
+	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), trig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
+	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), trig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
+	var delayTime_ = BufRd.kr(1, Latch.ar(\delayTime.ar(), trig), t * BufFrames.kr(\delayTime.ar()));
+	var decayTime_ = BufRd.kr(1, Latch.ar(\decayTime.ar(), trig), t * BufFrames.kr(\decayTime.ar()));
+
+	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
+
+	var sig = WhiteNoise.ar() * amp_ * env;
+
+	sig = RLPF.ar(sig, cutoff_, resonance_);
+	sig = AllpassC.ar(sig, ~maxDelayTime, delayTime_, decayTime_);
+
+	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
+}).add;
+
+
+SynthDef(\fmDelay, {
+	var t = In.ar(~t);
+	var trig = Changed.ar(t, 0.1);
+
+	var freq_ = BufRd.kr(1, Latch.ar(\freq.ar(), trig), t * BufFrames.kr(\freq.ar())).clip(20, 20000);
+	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), trig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
+	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), trig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
+	var ratio_ = BufRd.kr(1, Latch.ar(\ratio.ar(), trig), t * BufFrames.kr(\ratio.ar()));
+	var index_ = BufRd.kr(1, Latch.ar(\index.ar(), trig), t * BufFrames.kr(\index.ar()));
+	var delayTime_ = BufRd.kr(1, Latch.ar(\delayTime.ar(), trig), t * BufFrames.kr(\delayTime.ar()));
+	var decayTime_ = BufRd.kr(1, Latch.ar(\decayTime.ar(), trig), t * BufFrames.kr(\decayTime.ar()));
+
+	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
+
+	var modFreq = freq_*ratio_;
+	var mod = SinOsc.ar(modFreq)*index_;
+	var sig = SinOsc.ar(freq_ + mod) * amp_ * env;
+
+	sig = AllpassC.ar(sig, ~maxDelayTime, delayTime_, decayTime_);
+
+	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
+}).add;
+
+SynthDef(\fm, {
+	var t = In.ar(~t);
+	var trig = In.ar(~triggerBus);
+
+	var freq_ = BufRd.kr(1, Latch.ar(\freq.ar(), trig), t * BufFrames.kr(\freq.ar())).clip(20, 20000);
+	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), trig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
+	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), trig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
+
+	var ratio_ = BufRd.kr(1, Latch.ar(\ratio.ar(), trig), t * BufFrames.kr(\ratio.ar()));
+	var index_ = BufRd.kr(1, Latch.ar(\index.ar(), trig), t * BufFrames.kr(\index.ar()));
+
+	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
+
+	var modFreq = freq_*ratio_;
+	var mod = SinOsc.ar(modFreq)*index_;
+	var sig = SinOsc.ar(freq_ + mod) * amp_ * env;
+
+	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
+}).add;
+
+SynthDef(\sawDFMdelay, {
+	var t = In.ar(~t);
+	var trig = Changed.ar(t, 0.1);
+
+	var freq_ = BufRd.kr(1, Latch.ar(\freq.ar(), trig), t * BufFrames.kr(\freq.ar())).clip(20, 20000);
+	var dtune_ = BufRd.kr(1, Latch.ar(\dtune.ar(), trig), t * BufFrames.kr(\dtune.ar()));
+	var width_ = BufRd.kr(1, Latch.ar(\width.ar(), trig), t * BufFrames.kr(\width.ar()));
+	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), trig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
+	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), trig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
+
+	var cutoff_ = BufRd.kr(1, Latch.ar(\cutoff.ar(), trig), t * BufFrames.kr(\cutoff.ar()));
+	var res_ = BufRd.kr(1, Latch.ar(\res.ar(), trig), t * BufFrames.kr(\res.ar())).clip(0.01, 5);
+	var gain_ = BufRd.kr(1, Latch.ar(\gain.ar(), trig), t * BufFrames.kr(\gain.ar()));
+
+	var delayTime_ = BufRd.kr(1, Latch.ar(\delayTime.ar(), trig), t * BufFrames.kr(\delayTime.ar()));
+	var decayTime_ = BufRd.kr(1, Latch.ar(\decayTime.ar(), trig), t * BufFrames.kr(\decayTime.ar()));
+
+	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
+
+	var sig = VarSaw.ar(freq_, 0, width_) + VarSaw.ar(freq_+dtune_, 0.5, width_);
+
+	sig = AllpassC.ar(sig, ~maxDelayTime, delayTime_, decayTime_);
+	sig = DFM1.ar(sig, cutoff_, res_, gain_) * amp_ * env;
+
+	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
+}).add;
+
 
 SynthDef(\timer, {
 	|dur = 1, loopPoint = 1, t_manualTrig = 0, startPoint = 0|
@@ -13,12 +171,22 @@ SynthDef(\timer, {
 		startPoint
 	);
 
-	var trigStart = sig - 0.0001;
-	var trigNext = T2K.kr(sig > 0.8);
+	/*
+	When the new cycle starts and the new buffers
+	(which have already been received) are activated,
+	then release the previous buffers and ask for the next batch
+	*/
+	var trigStart = Changed.ar(sig, 0.01);
+	var trigFreeOld = TDelay.ar(trigStart, 0.001);
+	var trigAskNext = TDelay.ar(trigStart, 0.002);
 
-	//SendTrig.ar(trigStart, 0, sig);
-	//SendTrig.kr(trigNext, 1, sig);
+	// Trigger for asking for next batch of buffers
+	SendTrig.ar(trigAskNext, 1, sig);
+	// Trigger for releasing old buffers
+	SendTrig.ar(trigFreeOld, 0, sig);
+	SendTrig.ar(trigStart, 2);
 
+	Out.ar(~triggerBus, trigStart);
 	Out.kr(~silencerBus, sig);
 	Out.ar(~t, sig.clip(0, 1));
 }).add;
@@ -55,6 +223,7 @@ SynthDef(\reverb, {
 	Out.ar(out, sig);
 }).add;
 
+/*
 SynthDef(\noise, {
 	arg amp, freq, rq, pan;
 
@@ -168,25 +337,7 @@ SynthDef(\fm4, {
 	Out.ar(~reverbOut, Pan2.ar(fade * sig, pan_));
 }).add;
 
-SynthDef(\sawDFM, {
-	arg amp, freq, dtune, width, pan, ctf, res, gain;
 
-	var freq_ = BufRd.kr(1, freq, In.ar(~t) * BufFrames.kr(freq));
-	var dtune_ = BufRd.kr(1, dtune, In.ar(~t) * BufFrames.kr(dtune));
-	var width_ = BufRd.kr(1, width, In.ar(~t) * BufFrames.kr(width));
-	var amp_ = BufRd.kr(1, amp, In.ar(~t) * BufFrames.kr(amp));
-	var pan_ = BufRd.kr(1, pan, In.ar(~t) * BufFrames.kr(pan));
-	var ctf_ = BufRd.kr(1, ctf, In.ar(~t) * BufFrames.kr(ctf));
-	var res_ = BufRd.kr(1, res, In.ar(~t) * BufFrames.kr(res));
-	var gain_ = BufRd.kr(1, gain, In.ar(~t) * BufFrames.kr(gain));
-
-	var fade = Env([0, 1], [~fadeTime]).kr(0);
-
-	var sig = VarSaw.ar(freq_, 0, width_)*fade + VarSaw.ar(freq_+dtune_, 0.5, width_)*fade;
-	//sig = (sig*pregain_).clip(-1, 1);
-	sig = DFM1.ar(sig*fade, ctf_, res_, gain_) * amp_ * fade;
-	Out.ar(~reverbOut, fade*Pan2.ar(sig*fade, pan_));
-}).add;
 
 ~noiseFreq = 0.8;
 ~lagTime = 0.8;
@@ -225,6 +376,8 @@ SynthDef(\sine, {
 	var sig = SinOsc.ar(freq_) * amp_;
 	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
 }).add;
+
+*/
 
 "TimeLines: SynthDefs loaded".postln;
 )
