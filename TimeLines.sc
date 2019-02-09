@@ -1,12 +1,27 @@
 TimeLines {
 	var <numChannels, <server;
-	var <bufferDict, <synthDict, <fxDict, <inBusDict, <outBusDict;
-	var <oldBufferList;
-	var <timeGroup, <synthGroup, <fxGroup, <reverbGroup;
-	var timeSynth, reverbSynth, silencerSynth;
-	var <windowDur = 0.01, <loop = 1;
+	var <bufferDict, <synthDict, <inputBusDict, <synthdefDict;
+	var <buffersToFree;
+	var <timerGroup, <synthGroup, <postSynthGroup;
+	var <windowDur = 0.5, <loop = 1;
 	var <ghcAddress;
-	var <mainOutBus;
+	var <mainOutputBus, <silencerBus, <timerBus, <startTriggerBus;
+	var <synthFadeInTime = 1, <synthFadeOutTime = 1;
+	var timerSynth, silencerSynth;
+
+
+	/*
+	Contents:
+	  * 1. Boot up
+	  * 2. Initialization
+	  * 3. Update loop
+	  * 4. Resetting
+	  * 5. Patching
+	*/
+
+
+	////////////////////////////////////////////////////////////////////////////////////
+	// 1. Boot up
 
 	*start { |numChannels = 2, server|
 		~timelines.free;
@@ -18,7 +33,7 @@ TimeLines {
 			~timelines = TimeLines(numChannels, server);
 			~timelines.startSynths;
 			//ServerTree.add(TimeLines.start, server);
-			"TimeLines: Initialization completed successfully\nListening on port 57120".postln;
+			"TimeLines: Initialization completed successfully\nListening on port 57120\n".postln;
 		};
 
 		server.latency = 0.1;
@@ -28,36 +43,34 @@ TimeLines {
 		^super.newCopyArgs(numChannels, server ? Server.default).init;
 	}
 
+
+	////////////////////////////////////////////////////////////////////////////////////
+	// 2. Initialisation
+
 	//Initializing variables, loading defs and preparing the server
 	init {
-		this.initVariables;
+		this.initCoreVariables;
 		this.loadDefs;
 		server.sync;
 	}
 
-	initVariables {
-		mainOutBus = 0;
+	initCoreVariables {
+		mainOutputBus = 0;
+		timerBus= Bus.audio(server, 1);
+		silencerBus = Bus.audio(server, 1);
+		startTriggerBus = Bus.audio(server, 1);
 
-		~t = Bus.audio(server, 1);
-		~silencerBus = Bus.audio(server, 1);
-		~reverbOut = Bus.audio(server, 2);
-		~reverbSilencedBus = Bus.audio(server, 2);
-		~dryOut = Bus.audio(server, 2);
-		~triggerBus = Bus.audio(server, 1);
-
-		oldBufferList = List.newClear();
+		buffersToFree = List.newClear();
 		ghcAddress = NetAddr("127.0.0.1", 57121);
 
 		bufferDict = Dictionary();
 		synthDict = Dictionary();
-		inBusDict = Dictionary();
-		outBusDict = Dictionary();
-		outBusDict.add(\out -> mainOutBus);
+		inputBusDict = Dictionary();
+		synthdefDict = Dictionary();
 
-		timeGroup = Group();
-		synthGroup = Group.after(timeGroup);
-		fxGroup = Group.after(synthGroup);
-		reverbGroup = Group.after(fxGroup);
+		timerGroup = Group();
+		synthGroup = Group.after(timerGroup);
+		postSynthGroup = Group.after(synthGroup);
 	}
 
 	//Load and execute all files ind the defs folder
@@ -65,60 +78,34 @@ TimeLines {
 		"defs/*.scd".resolveRelative.loadPaths
 	}
 
-	// Starting the synths
+	// Instantiate timer and silencer synths
 	startSynths {
-		timeSynth = Synth(\timer, [\dur, windowDur, \loopPoint, 1], timeGroup);
-		reverbSynth = Synth.new(\reverb,
-			[
-				\amp, 1,
-				\predelay, 0.1,
-				\revtime, 1.8,
-				\lpf, 4500,
-				\mix, 0.35,
-				\in, ~reverbSilencedBus,
-				\out, 0,
-			],
-			reverbGroup
-		);
-		silencerSynth = Synth(\silencer, target: reverbGroup);
+		timerSynth = Synth(\timer, [
+			\dur, windowDur,
+			\loopPoint, 1,
+			\out, timerBus,
+			\silencerBus, silencerBus,
+			\triggerBus, startTriggerBus
+		], timerGroup);
+		// TODO: silencer reads main output and replaces it with result
+		//silencerSynth = Synth(\silencer, target: postSynthGroup);
 	}
 
-	freeAll {
-		// Free all busses
-		~t.free;
-		~silencerBus.free;
-		~reverbOut.free;
-		~reverbSilencedBus.free;
-		~dryOut.free;
 
-		// Free all groups and their synths
-		timeGroup.free;
-		synthGroup.free;
-		fxGroup.free;
-		reverbGroup.free;
+	////////////////////////////////////////////////////////////////////////////////////
+	// 3. Update loop
 
-		// Free all Buffers
-		this.freeOldBuffers;
-		bufferDict.keysValuesDo{ |key, buff| buff.free; bufferDict.removeAt(key)};
-	}
 
-	reset {
-		this.freeAll;
-		this.initVariables;
-		this.loadDefs;
-		this.startSynths;
-		"TimeLines: server reset successfully".postln;
-	}
+	// Not used at the moment
+	// loadSession { |synthPathArrays|
+	// 	synthPathArrays.do({ |synthPaths|
+	// 		this.loadSynthBuffers(synthPaths);
+	// 	});
+	// }
 
-	loadSession { |synthPathArrays|
-		synthPathArrays.do({ |synthPaths|
-			this.loadSynthBuffers(synthPaths);
-		});
-
-	}
-
-	// Removes synths that did not receive an update
+	// Remove synths that did not receive an update
 	checkSynthNames { |names|
+		// The names of synths that are running now but are not in the new list
 		var removedSynths = synthDict.keys.difference(names);
 
 		removedSynths.do({ |name|
@@ -127,33 +114,48 @@ TimeLines {
 		});
 	}
 
+	// releaseSynth { |synth|
+	// 	synth.set(\gate, 0);
+	// }
+
 	freeOldBuffers{
 		// Free all old buffers
-		oldBufferList.do({ |b| b.free});
-		oldBufferList.clear();
+		buffersToFree.do({ |b| b.free});
+		buffersToFree.clear();
 	}
 
+	// Load a synth's buffers (given as a list of paths to .wav files)
+	// and update it
 	loadSynthBuffers { |paths|
 		var numBuffs = paths.size;
 		// Get synth info shared by all buffers
+		// e.g. "bass_fm_amp.wav" -> synthName = "bass"; synthDef = "fm";
 		var synthInfo = paths[0].asString.split(Platform.pathSeparator).reverse[0].split($_)[[0, 1]];
-		// synthName e.g. "bob_fm"
 		var synthName = format("%_%", synthInfo[0], synthInfo[1]).asSymbol;
 		var synthDef = synthInfo[1].asSymbol;
 		var synth = synthDict[synthName];
 
+		var coreSynthArgs = [
+				\out, mainOutputBus,
+				\timerBus, timerBus,
+				\startTriggerBus, startTriggerBus
+		];
+
 		var buffers = Dictionary();
 
 		// First, loop over the received paths, load the buffers,
-		// add them to the buffer dictionary keep track of the old ones
+		// add them to the current buffer dictionary, and add the old one to be freed
 		paths.do({ |p|
 			var path = p.asString;
+			// Name of buffer and parameter it's controlling, e.g. 'bass_fm' and 'amp'
 			var buffName = path.split(Platform.pathSeparator).reverse[0].split($.)[0].asSymbol;
 			var param = buffName.asString.split($_)[2].asSymbol;
 
 			// Register the old buffer to be deleted when it's replaced
-			oldBufferList.add(bufferDict[buffName]);
+			buffersToFree.add(bufferDict[buffName]);
 
+			// Read a buffer, log it in the bufferDict,
+			// once loaded add to the buffers to update the synth with
 			bufferDict.add(buffName ->
 				Buffer.read(server, path, action:
 					{ |b|
@@ -166,24 +168,24 @@ TimeLines {
 		Routine.run {
 			server.sync;
 
-			// Then, check if the synth already exists
+			// Check if the synth already exists
 			if(synth.isNil,
 				{
-					var argList = buffers.getPairs;
+					// e.g. [\amp, <url to buffer>, ...]
+					var argList = buffers.getPairs++coreSynthArgs;
 					// If it doesn't, instantiate it with the buffers as arguments and add it to the dictionary
 					synthDict.add(synthName -> Synth(synthDef, argList, synthGroup));
 				},
 				{
-					// If it does, check to see if its SynthDef matches the one received
+					// If it does exist, check to see whether it should be re-instantiated
 					if(synth.defName != synthDef,
 						{
-							//If it doesn't, free it and re-instantiate it
-							var argList = buffers.getPairs;
+							var argList = buffers.getPairs++coreSynthArgs;
 							synth.free;
 							synthDict.add(synthName -> Synth(synthDef, argList, synthGroup));
 						},
 						{
-							// If it does, just update it with the received buffers
+							// If it doesn't, just update it with the received buffers
 							buffers.keysValuesDo({ |param, buff|
 								synth.set(param, buff);
 							});
@@ -194,27 +196,73 @@ TimeLines {
 
 	setWindow{ |dur|
 		windowDur = dur;
-		timeSynth.set(\dur, windowDur);
+		timerSynth.set(\dur, windowDur);
 	}
 
 	play {
-		timeSynth.set(\t_manualTrig, 1);
+		timerSynth.set(\t_manualTrig, 1);
 	}
 
 	setLoop{ |loop|
 		loop = loop;
 		if(loop == 0,
-			{timeSynth.set(\loopPoint, inf)},
-			{timeSynth.set(\loopPoint, 1)})
+			{timerSynth.set(\loopPoint, inf)},
+			{timerSynth.set(\loopPoint, 1)})
 	}
 
-	setTimeSynth{ |dur, loop|
+	setTimerSynth{ |dur, loop|
 		windowDur = dur;
 		loop = loop;
-		timeSynth.set(
+		timerSynth.set(
 		\dur, windowDur,
 		\loop, loop);
 	}
+
+
+	////////////////////////////////////////////////////////////////////////////////////
+	// 4. Resetting
+
+	freeAll {
+		// Free all busses
+		timerBus.free;
+		silencerBus.free;
+		startTriggerBus.free;
+
+		// Free all groups and their synths
+		timerGroup.free;
+		synthGroup.free;
+
+		// Free all Buffers
+		this.freeOldBuffers;
+		bufferDict.keysValuesDo{ |key, buff| buff.free; bufferDict.removeAt(key)};
+	}
+
+	reset {
+		this.freeAll;
+		this.initCoreVariables;
+		this.loadDefs;
+		this.startSynths;
+		"TimeLines: server reset successfully".postln;
+	}
+
+
+	////////////////////////////////////////////////////////////////////////////////////
+	// 5. Patching
+
+	// Expects [src1, dst1, src2, dst2, ...]
+	patchSynths { |patches|
+		(patches.size / 2).do({ |i|
+			var synthSrc = patches[2*i].asSymbol;
+			var synthDst= patches[2*i + 1].asSymbol;
+
+			this.patchFromTo(synthSrc, synthDst);
+		});
+	}
+
+
+	// Expects symbols
+	patchFromTo { |synth1, synth2|
+		synthDict[synth1].set(\out, inputBusDict[synth2]);
+	}
+
 }
-
-

@@ -1,65 +1,3 @@
-
-/*
-(
-// the basic wrapper
-~makeEffect = { |name, func, lags, numChannels = 2|
-    SynthDef(name,
-		{ |inBus, outBus = ~reverbOut, gate = 1, wet = 1|
-			var in, out, t, env;
-			in = In.ar(inputBus, numChannels);
-			env = Linen.kr(gate, 2, 1, 2, 2); // fade in the effect
-
-			// call the wrapped function. The in and env arguments are passed to the function
-			// as the first two arguments (prependArgs).
-			// Any other arguments of the wrapped function will be Controls.
-			out = SynthDef.wrap(func, lags, [in, t]) * env;
-
-			Out.ar(outBus, XFade2.ar(in, out, wet.range(-1, 1)));
-	}).add;
-};
-
-~makeSynth = { |name, func|
-	SynthDef(name,
-		{ |inBus, outBus = 0, gate = 1, pan, amp|
-			var sig, t, env, pan_, amp_;
-
-			t = In.ar(~t);
-			pan_ = BufRd.kr(1, pan, t * BufFrames.kr(pan));
-			amp_ = BufRd.kr(1, amp, t * BufFrames.kr(amp));
-			env = Linen.kr(gate, 2, 1, 2, 2);
-
-			sig = SynthDef.wrap(func, prependArgs: [t]) * env * amp;
-
-			Out.ar(outBus, Pan2.ar(sig, pan_));
-	}).add;
-};
-
-)
-
-(
-~makeSynth.(\sinewave,
-	{ |t, freq|
-		SinOsc.ar(freq);
-});
-)
-
-
-// now make a wah
-(
-~makeEffect.value(\wah, {|in, env, rate = 0.7, ffreq = 1200, depth = 0.8, rq = 0.1|
-    // in and env come from the wrapper. The rest are controls
-     var lfo;
-    lfo = LFNoise1.kr(rate, depth * ffreq, ffreq);
-    RLPF.ar(in, lfo, rq, 10).distort * 0.15; },
-    [0.1, 0.1, 0.1, 0.1],  // lags for rate ffreq, depth and rq
-    2    // numChannels
-);
-)
-
-*/
-
-
-
 (
 ~fadeTime = 3;
 ~fadeOutTime = 1;
@@ -67,15 +5,15 @@
 ~maxDelayTime = 10;
 
 SynthDef(\noiseLPFdelay, {
-	var t = In.ar(~t);
-	var trig = Changed.ar(t, 0.1);
+	var t = In.ar(\timerBus.kr());
+	var startTrig = In.ar(\startTriggerBus.kr());
 
-	var cutoff_ = BufRd.kr(1, Latch.ar(\cutoff.ar(), trig), t * BufFrames.kr(\cutoff.ar())).clip(20, 20000);
-	var resonance_ = BufRd.kr(1, Latch.ar(\resonance.ar(), trig), t * BufFrames.kr(\resonance.ar())).clip(0.01, 5);
-	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), trig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
-	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), trig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
-	var delayTime_ = BufRd.kr(1, Latch.ar(\delayTime.ar(), trig), t * BufFrames.kr(\delayTime.ar()));
-	var decayTime_ = BufRd.kr(1, Latch.ar(\decayTime.ar(), trig), t * BufFrames.kr(\decayTime.ar()));
+	var cutoff_ = BufRd.kr(1, Latch.ar(\cutoff.ar(), startTrig), t * BufFrames.kr(\cutoff.ar())).clip(20, 20000);
+	var resonance_ = BufRd.kr(1, Latch.ar(\resonance.ar(), startTrig), t * BufFrames.kr(\resonance.ar())).clip(0.01, 5);
+	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
+	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), startTrig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
+	var delayTime_ = BufRd.kr(1, Latch.ar(\delayTime.ar(), startTrig), t * BufFrames.kr(\delayTime.ar()));
+	var decayTime_ = BufRd.kr(1, Latch.ar(\decayTime.ar(), startTrig), t * BufFrames.kr(\decayTime.ar()));
 
 	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
 
@@ -84,10 +22,30 @@ SynthDef(\noiseLPFdelay, {
 	sig = RLPF.ar(sig, cutoff_, resonance_);
 	sig = AllpassC.ar(sig, ~maxDelayTime, delayTime_, decayTime_);
 
-	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
+	Out.ar(\out.kr(), Pan2.ar(sig, pan_));
 }).add;
 
+SynthDef(\fm, {
+	var t = In.ar(\timerBus.kr());
+	var startTrig = In.ar(\startTriggerBus.kr());
 
+	var freq_ = BufRd.kr(1, Latch.ar(\freq.ar(), startTrig), t * BufFrames.kr(\freq.ar())).clip(20, 20000);
+	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
+	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), startTrig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
+
+	var ratio_ = BufRd.kr(1, Latch.ar(\ratio.ar(), startTrig), t * BufFrames.kr(\ratio.ar()));
+	var index_ = BufRd.kr(1, Latch.ar(\index.ar(), startTrig), t * BufFrames.kr(\index.ar()));
+
+	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
+
+	var modFreq = freq_*ratio_;
+	var mod = SinOsc.ar(modFreq)*index_;
+	var sig = SinOsc.ar(freq_ + mod) * amp_ * env;
+
+	Out.ar(\out.kr(), Pan2.ar(sig, pan_));
+}).add;
+
+/*
 SynthDef(\fmDelay, {
 	var t = In.ar(~t);
 	var trig = Changed.ar(t, 0.1);
@@ -111,25 +69,7 @@ SynthDef(\fmDelay, {
 	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
 }).add;
 
-SynthDef(\fm, {
-	var t = In.ar(~t);
-	var trig = In.ar(~triggerBus);
 
-	var freq_ = BufRd.kr(1, Latch.ar(\freq.ar(), trig), t * BufFrames.kr(\freq.ar())).clip(20, 20000);
-	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), trig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
-	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), trig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
-
-	var ratio_ = BufRd.kr(1, Latch.ar(\ratio.ar(), trig), t * BufFrames.kr(\ratio.ar()));
-	var index_ = BufRd.kr(1, Latch.ar(\index.ar(), trig), t * BufFrames.kr(\index.ar()));
-
-	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
-
-	var modFreq = freq_*ratio_;
-	var mod = SinOsc.ar(modFreq)*index_;
-	var sig = SinOsc.ar(freq_ + mod) * amp_ * env;
-
-	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
-}).add;
 
 SynthDef(\sawDFMdelay, {
 	var t = In.ar(~t);
@@ -157,6 +97,8 @@ SynthDef(\sawDFMdelay, {
 
 	Out.ar(~reverbOut, Pan2.ar(sig, pan_));
 }).add;
+*/
+
 
 
 SynthDef(\timer, {
@@ -186,23 +128,22 @@ SynthDef(\timer, {
 	SendTrig.ar(trigFreeOld, 0, sig);
 	SendTrig.ar(trigStart, 2);
 
-	Out.ar(~triggerBus, trigStart);
-	Out.kr(~silencerBus, sig);
-	Out.ar(~t, sig.clip(0, 1));
+	Out.ar(\triggerBus.kr(), trigStart);
+	Out.kr(\silencerBus.kr(), sig);
+	Out.ar(\out.kr(), sig.clip(0, 1));
 }).add;
 
 SynthDef(\silencer, {
-	var phasor = In.kr(~silencerBus);
-	var reverbIn = In.ar(~reverbOut, 2);
-	var dryIn = In.ar(~dryOut, 2);
+	var phasor = In.kr(\silencerBus.kr());
 
 	var switch = Lag2.kr(phasor < 1);
-	reverbIn = reverbIn * switch;
-	dryIn = dryIn * switch;
-	Out.ar(~reverbSilencedBus, reverbIn);
-	Out.ar(0, dryIn);
+	var signal = In.ar(\input.kr(), 2) * switch;
+
+	Out.ar(\out.kr(), signal);
 }).add;
 
+
+/*
 //by Eli Fieldsteel
 SynthDef(\reverb, {
 	arg in, predelay=0.1, revtime=1.8,
@@ -222,6 +163,8 @@ SynthDef(\reverb, {
 
 	Out.ar(out, sig);
 }).add;
+*/
+
 
 /*
 SynthDef(\noise, {
