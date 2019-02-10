@@ -1,20 +1,38 @@
 (
+
+
 OSCdef(\TimeLines_triggers, {
 	|msg, time|
 	if(msg[2] == 0, {~timelines.freeOldBuffers});
 	if(msg[2] == 1, {~timelines.ghcAddress.sendMsg("/incrementWindow", "")});
 	//if(msg[2] == 2, {"start of cycle".postln});
+	"function1"
 }, '/tr', s.addr).add;
 
-OSCdef(\TimeLines_synths, {
+OSCdef(\TimeLines_synthNames, {
 	|msg, time, addr, recvPort|
 	~timelines.checkSynthNames(msg.drop(1));
+	("checking synthNames: " ++ msg.drop(1)).postln;
 }, "/TimeLines/synthNames").add;
 
-OSCdef(\TimeLines_load, {
+OSCdef(\TimeLines_synthOrder, {
+	|msg, time, addr, recvPort|
+	~timelines.setSynthOrder(msg.drop(1));
+	"function3"
+}, "/TimeLines/synthOrder").add;
+
+OSCdef(\TimeLines_loadSynthBuffers, {
 	|msg, time, addr, recvPort|
 	~timelines.loadSynthBuffers(msg.drop(1));
-}, "/TimeLines/load").add;
+	("loadSynthBuffers: " ++ msg.drop(1)).postln;
+}, "/TimeLines/loadSynthBuffers").add;
+
+OSCdef(\TimeLines_patches, {
+	|msg, time, addr, recvPort|
+	~timelines.setPatches(msg.drop(1));
+	("set Patches: " ++ msg.drop(1)).postln;
+}, "/TimeLines/patches").add;
+
 
 /*
 OSCdef(\TimeLines_loadSynth, {
@@ -31,6 +49,7 @@ OSCdef(\TimeLines_loadFx, {
 }, "/TimeLines/loadSynth").add;
 */
 
+// freeAllSynths, resetTimer, setLoop
 
 OSCdef(\TimeLines_play, {
 	|msg, time, addr, recvPort|
@@ -41,7 +60,7 @@ OSCdef(\TimeLines_window, {
 	|msg, time, addr, recvPort|
 	var dur = msg[1].asFloat;
 	~timelines.setWindow(dur);
-}, "/TimeLines/setWindow").add;
+}, "/TimeLines/setWindowDur").add;
 
 OSCdef(\TimeLines_loop, {
 	|msg, time, addr, recvPort|
@@ -49,8 +68,17 @@ OSCdef(\TimeLines_loop, {
 	~timelines.setLoop(loop);
 }, "/TimeLines/setLoop").add;
 
-OSCdef(\TimeLines_reset, {
+OSCdef(\TimeLines_freeAllSynths, {
 	|msg, time, addr, recvPort|
+	var loop = msg[1].asFloat;
+	~timelines.freeAllSynths();
+}, "/TimeLines/freeAllSynths").add;
+
+OSCdef(\TimeLines_resetTimer, {
+	~timelines.resetTimer;
+}, "/TimeLines/resetTimer").add;
+
+OSCdef(\TimeLines_reset, {
 	~timelines.reset;
 }, "/TimeLines/reset").add;
 

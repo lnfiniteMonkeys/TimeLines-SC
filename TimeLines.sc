@@ -1,6 +1,7 @@
 TimeLines {
 	var <numChannels, <server;
-	var <bufferDict, <synthDict, <inputBusDict, <synthdefDict;
+	var <sessionType, <timerOn;
+	var <bufferDict, <synthDict, <inputBusDict/*, <synthdefDict*/;
 	var <buffersToFree;
 	var <timerGroup, <synthGroup, <postSynthGroup;
 	var <windowDur = 0.5, <loop = 1;
@@ -66,7 +67,7 @@ TimeLines {
 		bufferDict = Dictionary();
 		synthDict = Dictionary();
 		inputBusDict = Dictionary();
-		synthdefDict = Dictionary();
+		//synthdefDict = Dictionary();
 
 		timerGroup = Group();
 		synthGroup = Group.after(timerGroup);
@@ -103,17 +104,25 @@ TimeLines {
 	// 	});
 	// }
 
+	setSynthOrder { |order|
+		"todo".postln;
+	}
+
 	// Remove synths that did not receive an update
 	checkSynthNames { |names|
 		// The names of synths that are running now but are not in the new list
 		var removedSynths = synthDict.keys.difference(names);
-
+		removedSynths.postln;
 		removedSynths.do({ |name|
-			synthDict[name].set(\gate, 0);
-			synthDict.removeAt(name);
+			this.freeSynth(name);
 		});
 	}
 
+	freeSynth { |synthName|
+		"freeing synth!".postln;
+		synthDict[synthName].set(\gate, 0);
+		synthDict.removeAt(synthName);
+	}
 	// releaseSynth { |synth|
 	// 	synth.set(\gate, 0);
 	// }
@@ -171,10 +180,12 @@ TimeLines {
 			// Check if the synth already exists
 			if(synth.isNil,
 				{
-					// e.g. [\amp, <url to buffer>, ...]
 					var argList = buffers.getPairs++coreSynthArgs;
+					// each synth gets its own input bus
+					inputBusDict.add(synthName -> Bus.audio(server, 1 /* numChannels */));
+					argList = argList ++ [\input, inputBusDict[synthName]];
 					// If it doesn't, instantiate it with the buffers as arguments and add it to the dictionary
-					synthDict.add(synthName -> Synth(synthDef, argList, synthGroup));
+					synthDict.add(synthName -> Synth(synthDef, argList, synthGroup, 'addToTail'));
 				},
 				{
 					// If it does exist, check to see whether it should be re-instantiated
@@ -222,6 +233,19 @@ TimeLines {
 	////////////////////////////////////////////////////////////////////////////////////
 	// 4. Resetting
 
+	resetTimer {
+		timerSynth.set(\t_manualTrig, 1);
+	}
+
+	freeAllSynths {
+		synthDict.do({ |key, synth|
+			synth.set(\gate, 0);
+			synthDict.removeAt(key);
+		});
+
+		bufferDict.keysValuesDo{ |key, buff| buff.free; bufferDict.removeAt(key)};
+	}
+
 	freeAll {
 		// Free all busses
 		timerBus.free;
@@ -245,12 +269,11 @@ TimeLines {
 		"TimeLines: server reset successfully".postln;
 	}
 
-
 	////////////////////////////////////////////////////////////////////////////////////
 	// 5. Patching
 
 	// Expects [src1, dst1, src2, dst2, ...]
-	patchSynths { |patches|
+	setPatches { |patches|
 		(patches.size / 2).do({ |i|
 			var synthSrc = patches[2*i].asSymbol;
 			var synthDst= patches[2*i + 1].asSymbol;

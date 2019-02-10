@@ -45,6 +45,21 @@ SynthDef(\fm, {
 	Out.ar(\out.kr(), Pan2.ar(sig, pan_));
 }).add;
 
+SynthDef(\inputTest, {
+	var t = In.ar(\timerBus.kr());
+	var startTrig = In.ar(\startTriggerBus.kr());
+
+	var cutoff_ = BufRd.kr(1, Latch.ar(\cutoff.ar(), startTrig), t * BufFrames.kr(\cutoff.ar())).clip(20, 20000);
+	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
+	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), startTrig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
+
+	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
+
+	var sig = RLPF.ar(In.ar(\input.kr()), cutoff_, 1) * env * amp_;
+
+	Out.ar(\out.kr(), Pan2.ar(sig, pan_));
+}).add;
+
 /*
 SynthDef(\fmDelay, {
 	var t = In.ar(~t);
@@ -119,8 +134,8 @@ SynthDef(\timer, {
 	then release the previous buffers and ask for the next batch
 	*/
 	var trigStart = Changed.ar(sig, 0.01);
-	var trigFreeOld = TDelay.ar(trigStart, 0.001);
-	var trigAskNext = TDelay.ar(trigStart, 0.002);
+	var trigFreeOld = TDelay.ar(trigStart, 0.01);
+	var trigAskNext = TDelay.ar(trigStart, 0.015);
 
 	// Trigger for asking for next batch of buffers
 	SendTrig.ar(trigAskNext, 1, sig);
