@@ -1,5 +1,6 @@
 TimeLines {
 	var <numChannels, <server;
+	var <sessionMode = 'FiniteSession';
 	var <sessionType, <timerOn;
 	var <bufferDict, <synthDict, <inputBusDict/*, <synthdefDict*/;
 	var <buffersToFree;
@@ -74,7 +75,7 @@ TimeLines {
 		postSynthGroup = Group.after(synthGroup);
 	}
 
-	//Load and execute all files ind the defs folder
+	// Load and execute all files in the defs folder
 	loadDefs {
 		"defs/*.scd".resolveRelative.loadPaths
 	}
@@ -86,7 +87,8 @@ TimeLines {
 			\loopPoint, 1,
 			\out, timerBus,
 			\silencerBus, silencerBus,
-			\triggerBus, startTriggerBus
+			\triggerBus, startTriggerBus,
+			\active, 0 // mute by default
 		], timerGroup);
 		// TODO: silencer reads main output and replaces it with result
 		//silencerSynth = Synth(\silencer, target: postSynthGroup);
@@ -96,41 +98,66 @@ TimeLines {
 	////////////////////////////////////////////////////////////////////////////////////
 	// 3. Update loop
 
+	setSynthOrder { |synthOrder|
+		Routine.run {
+			server.sync;
 
-	// Not used at the moment
-	// loadSession { |synthPathArrays|
-	// 	synthPathArrays.do({ |synthPaths|
-	// 		this.loadSynthBuffers(synthPaths);
-	// 	});
-	// }
+			synthOrder.do({ |synthName, i|
+				if(i > 0, {
+					var prevSynth = synthDict[synthOrder[i - 1]];
+					synthDict[synthName].moveAfter(prevSynth)
+				});
+			});
 
-	setSynthOrder { |order|
-		"todo".postln;
+			("synthOrder done: " ++ synthOrder).postln;
+			"."
+		};
+	}
+
+	setSessionMode{ |m|
+		if(m == 'InfiniteMode' || m == 'FiniteMode', {
+			sessionMode = m;
+			("sessionMode done: " ++ m).postln;
+			"."
+		});
 	}
 
 	// Remove synths that did not receive an update
 	checkSynthNames { |names|
-		// The names of synths that are running now but are not in the new list
-		var removedSynths = synthDict.keys.difference(names);
-		removedSynths.postln;
-		removedSynths.do({ |name|
-			this.freeSynth(name);
-		});
+		Routine.run {
+			// The names of synths that are running now but are not in the new list
+			var removedSynths = synthDict.keys.difference(names);
+			server.sync;
+
+			removedSynths.do({ |name|
+				this.freeSynth(name);
+			});
+
+			("removedSynths done: " ++ removedSynths).postln;
+			"."
+		};
+
 	}
 
 	freeSynth { |synthName|
-		"freeing synth!".postln;
 		synthDict[synthName].set(\gate, 0);
 		synthDict.removeAt(synthName);
+		("freeing synth done: "++synthName).postln;
+		"."
 	}
-	// releaseSynth { |synth|
-	// 	synth.set(\gate, 0);
-	// }
 
 	freeOldBuffers{
 		// Free all old buffers
 		buffersToFree.do({ |b| b.free});
 		buffersToFree.clear();
+		("freeing old buffers done").postln;
+		"."
+	}
+
+	setTimerActive { |x|
+		if(x == 0 || x == 1, {
+			timerSynth.set(\active, x)
+		});
 	}
 
 	// Load a synth's buffers (given as a list of paths to .wav files)
@@ -166,9 +193,8 @@ TimeLines {
 			// Read a buffer, log it in the bufferDict,
 			// once loaded add to the buffers to update the synth with
 			bufferDict.add(buffName ->
-				Buffer.read(server, path, action:
-					{ |b|
-						buffers.add(param -> b);
+				Buffer.read(server, path, action: { |b|
+					buffers.add(param -> b);
 				});
 			);
 		});
@@ -210,15 +236,12 @@ TimeLines {
 		timerSynth.set(\dur, windowDur);
 	}
 
-	play {
-		timerSynth.set(\t_manualTrig, 1);
-	}
-
 	setLoop{ |loop|
 		loop = loop;
 		if(loop == 0,
 			{timerSynth.set(\loopPoint, inf)},
-			{timerSynth.set(\loopPoint, 1)})
+			{timerSynth.set(\loopPoint, 1)}
+		);
 	}
 
 	setTimerSynth{ |dur, loop|
@@ -233,17 +256,27 @@ TimeLines {
 	////////////////////////////////////////////////////////////////////////////////////
 	// 4. Resetting
 
-	resetTimer {
-		timerSynth.set(\t_manualTrig, 1);
+	resetTimer { |x|
+		Routine.run{
+			server.sync;
+
+			// 0 mutes the timer, 1 unmutes it
+			if(x == 0 || x == 1, {timerSynth.set(\active, x)});
+			timerSynth.set(\t_manualTrig, 1);
+		};
 	}
 
 	freeAllSynths {
-		synthDict.do({ |key, synth|
+		synthDict.keysValuesDo{ |key, synth|
 			synth.set(\gate, 0);
 			synthDict.removeAt(key);
-		});
+			("synth: "++key++" freed").postln;
+		};
 
-		bufferDict.keysValuesDo{ |key, buff| buff.free; bufferDict.removeAt(key)};
+		bufferDict.keysValuesDo{ |key, buff|
+			buff.free;
+			bufferDict.removeAt(key)
+		};
 	}
 
 	freeAll {
@@ -261,7 +294,7 @@ TimeLines {
 		bufferDict.keysValuesDo{ |key, buff| buff.free; bufferDict.removeAt(key)};
 	}
 
-	reset {
+	resetServer {
 		this.freeAll;
 		this.initCoreVariables;
 		this.loadDefs;
@@ -274,12 +307,16 @@ TimeLines {
 
 	// Expects [src1, dst1, src2, dst2, ...]
 	setPatches { |patches|
-		(patches.size / 2).do({ |i|
-			var synthSrc = patches[2*i].asSymbol;
-			var synthDst= patches[2*i + 1].asSymbol;
+		Routine.run {
+			server.sync;
 
-			this.patchFromTo(synthSrc, synthDst);
-		});
+			(patches.size / 2).do({ |i|
+				var synthSrc = patches[2*i].asSymbol;
+				var synthDst= patches[2*i + 1].asSymbol;
+
+				this.patchFromTo(synthSrc, synthDst);
+			});
+		};
 	}
 
 

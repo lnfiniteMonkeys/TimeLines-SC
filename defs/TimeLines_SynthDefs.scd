@@ -1,7 +1,7 @@
 (
 ~fadeTime = 3;
-~fadeOutTime = 1;
-~fadeInTime = 1;
+~fadeOutTime = 0.5;
+~fadeInTime = 0.5;
 ~maxDelayTime = 10;
 
 SynthDef(\noiseLPFdelay, {
@@ -114,10 +114,8 @@ SynthDef(\sawDFMdelay, {
 }).add;
 */
 
-
-
 SynthDef(\timer, {
-	|dur = 1, loopPoint = 1, t_manualTrig = 0, startPoint = 0|
+	|dur = 1, loopPoint = 1, t_manualTrig = 0, startPoint = 0, active = 0|
 
 	var sig = Phasor.ar(
 		t_manualTrig,
@@ -133,9 +131,12 @@ SynthDef(\timer, {
 	(which have already been received) are activated,
 	then release the previous buffers and ask for the next batch
 	*/
-	var trigStart = Changed.ar(sig, 0.01);
-	var trigFreeOld = TDelay.ar(trigStart, 0.01);
-	var trigAskNext = TDelay.ar(trigStart, 0.015);
+	var trigStart = Changed.ar(sig, 0.01) * active;
+	var trigFreeOld = TDelay.ar(trigStart, 0.01) * active;
+	var trigAskNext = TDelay.ar(trigStart, 0.015) * active;
+
+	// Optional mute
+	sig = sig * active;
 
 	// Trigger for asking for next batch of buffers
 	SendTrig.ar(trigAskNext, 1, sig);
