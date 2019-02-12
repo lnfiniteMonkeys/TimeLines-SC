@@ -115,15 +115,16 @@ SynthDef(\sawDFMdelay, {
 */
 
 SynthDef(\timer, {
-	|dur = 1, loopPoint = 1, t_manualTrig = 0, startPoint = 0, active = 0|
+	var mute = 1 - \mute.kr(0);
 
+	// Resetable looping phasor
 	var sig = Phasor.ar(
 		t_manualTrig,
-		1/(dur*SampleRate.ir()),
-		startPoint,
+		1 / (\dur.kr(1) * SampleRate.ir()),
+		\startPoint.kr(0),
 		//set loopPoint to 1 for looping, inf for no looping
-		loopPoint,
-		startPoint
+		\loopPoint.kr(1),
+		\startPoint.kr(0)
 	);
 
 	/*
@@ -131,31 +132,35 @@ SynthDef(\timer, {
 	(which have already been received) are activated,
 	then release the previous buffers and ask for the next batch
 	*/
-	var trigStart = Changed.ar(sig, 0.01) * active;
-	var trigFreeOld = TDelay.ar(trigStart, 0.01) * active;
-	var trigAskNext = TDelay.ar(trigStart, 0.015) * active;
+
+	var trigStart = Changed.ar(sig, 0.01) * mute;
+	var trigFreeOld = TDelay.ar(trigStart, 0.01) * mute;
+	var trigAskNext = TDelay.ar(trigStart, 0.015) * mute;
 
 	// Optional mute
-	sig = sig * active;
+	sig = sig * mute;
 
-	// Trigger for asking for next batch of buffers
-	SendTrig.ar(trigAskNext, 1, sig);
+	// Signals the looping back of the phasor
+	SendTrig.ar(trigStart, 0);
 	// Trigger for releasing old buffers
-	SendTrig.ar(trigFreeOld, 0, sig);
-	SendTrig.ar(trigStart, 2);
+	SendTrig.ar(trigFreeOld, 1, sig);
+	// Trigger for asking for next batch of buffers
+	SendTrig.ar(trigAskNext, 2, sig);
 
-	Out.ar(\triggerBus.kr(), trigStart);
+
+
+	Out.ar(\startTriggerBus.kr(), trigStart);
 	Out.kr(\silencerBus.kr(), sig);
 	Out.ar(\out.kr(), sig.clip(0, 1));
 }).add;
 
 SynthDef(\silencer, {
-	var phasor = In.kr(\silencerBus.kr());
+	var phasor = In.kr(\timerBus.kr());
 
 	var switch = Lag2.kr(phasor < 1);
-	var signal = In.ar(\input.kr(), 2) * switch;
+	var signal = In.ar(\input.kr(), ~numChannels) * switch * (1 - \mute.kr(0));
 
-	Out.ar(\out.kr(), signal);
+	ReplaceOut.ar(\input.kr(), signal);
 }).add;
 
 

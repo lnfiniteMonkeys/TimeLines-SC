@@ -10,6 +10,16 @@ TimeLines {
 	var <mainOutputBus, <silencerBus, <timerBus, <startTriggerBus;
 	var <synthFadeInTime = 1, <synthFadeOutTime = 1;
 	var timerSynth, silencerSynth;
+	var b_allSynthsReady = false, b_debugging = true;
+
+
+	/*
+	TODO:
+	  * add debug prints
+	  * finish allSynthsAreReady
+	  * finish switching to infinite session
+	*/
+
 
 
 	/*
@@ -73,6 +83,8 @@ TimeLines {
 		timerGroup = Group();
 		synthGroup = Group.after(timerGroup);
 		postSynthGroup = Group.after(synthGroup);
+
+		debugPrint("initCoreVariables");
 	}
 
 	// Load and execute all files in the defs folder
@@ -87,16 +99,52 @@ TimeLines {
 			\loopPoint, 1,
 			\out, timerBus,
 			\silencerBus, silencerBus,
-			\triggerBus, startTriggerBus,
-			\active, 0 // mute by default
+			\startTriggerBus, startTriggerBus,
+			\mute, 1 // mute by default
 		], timerGroup);
-		// TODO: silencer reads main output and replaces it with result
-		//silencerSynth = Synth(\silencer, target: postSynthGroup);
+
+		silencerSynth = Synth(\silencer, [
+			\timerBus, timerBus,
+			\input, mainOutputBus
+		], postSynthGroup);
+
+		debugPrint("startSynths");
 	}
 
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// 3. Update loop
+
+	askNextBuffers {
+		ghcAddress.sendMsg("/incrementWindow", "");
+
+		debugPrint("askNextBuffers");
+	}
+
+	allSynthsReady { |synthNames|
+		// TODO: check current synthDict to see if all synths in synthNames are ready
+	}
+
+	switchToInfiniteSession { |synthNames|
+		b_allSynthsReady = false;
+		timerSynth.set(\mute, 1);
+		silencerSynth.set(\mute, 1);
+
+		fork {
+			// Keep checking for all synths to be instantiated
+			while(
+				{this.allSynthsReady(synthNames).not},
+				{0.001.wait}
+			);
+
+			// Then unmute timer and silencer synths and start playing
+			timerSynth.set(\mute, 0);
+			timerSynth.set(\t_manualTrig, 1);
+			silencerSynth.set(\mute, 0);
+		};
+
+		debugPrint("switchToInfiniteSession");
+	}
 
 	setSynthOrder { |synthOrder|
 		Routine.run {
@@ -109,16 +157,15 @@ TimeLines {
 				});
 			});
 
-			("synthOrder done: " ++ synthOrder).postln;
-			"."
+			debugPrint("setSynthOrder");
 		};
 	}
 
 	setSessionMode{ |m|
 		if(m == 'InfiniteMode' || m == 'FiniteMode', {
 			sessionMode = m;
-			("sessionMode done: " ++ m).postln;
-			"."
+
+			debugPrint("switchToInfiniteSession");
 		});
 	}
 
@@ -133,8 +180,7 @@ TimeLines {
 				this.freeSynth(name);
 			});
 
-			("removedSynths done: " ++ removedSynths).postln;
-			"."
+			debugPrint("checkSynthNames");
 		};
 
 	}
@@ -154,10 +200,11 @@ TimeLines {
 		"."
 	}
 
-	setTimerActive { |x|
-		if(x == 0 || x == 1, {
-			timerSynth.set(\active, x)
-		});
+	setTimerMute { |x|
+		if(x == 0 || x == 1,
+			{ timerSynth.set(\mute, x) },
+			{ "Invalid \"setTimerMute\" argument received:%".format(x) }
+		);
 	}
 
 	// Load a synth's buffers (given as a list of paths to .wav files)
@@ -228,6 +275,8 @@ TimeLines {
 							});
 					});
 			});
+
+			("synthDict: "++synthDict).postln;
 		};
 	}
 
@@ -261,12 +310,13 @@ TimeLines {
 			server.sync;
 
 			// 0 mutes the timer, 1 unmutes it
-			if(x == 0 || x == 1, {timerSynth.set(\active, x)});
+			if(x == 0 || x == 1, {timerSynth.set(\mute, x)});
 			timerSynth.set(\t_manualTrig, 1);
 		};
 	}
 
 	freeAllSynths {
+		// Free synths, buffers, and synth buses
 		synthDict.keysValuesDo{ |key, synth|
 			synth.set(\gate, 0);
 			synthDict.removeAt(key);
@@ -277,7 +327,13 @@ TimeLines {
 			buff.free;
 			bufferDict.removeAt(key)
 		};
+
+		inputBusDict.keysValuesDo{ |key, buff|
+			buff.free;
+			inputBusDict.removeAt(key)
+		};
 	}
+
 
 	freeAll {
 		// Free all busses
@@ -285,13 +341,15 @@ TimeLines {
 		silencerBus.free;
 		startTriggerBus.free;
 
+
 		// Free all groups and their synths
 		timerGroup.free;
 		synthGroup.free;
 
+
 		// Free all Buffers
 		this.freeOldBuffers;
-		bufferDict.keysValuesDo{ |key, buff| buff.free; bufferDict.removeAt(key)};
+
 	}
 
 	resetServer {
@@ -323,6 +381,12 @@ TimeLines {
 	// Expects symbols
 	patchFromTo { |synth1, synth2|
 		synthDict[synth1].set(\out, inputBusDict[synth2]);
+	}
+
+
+	//////////////////
+	debugPrint { |funcName|
+		if(b_debugging, {"% done".format(funcName).postln});
 	}
 
 }
