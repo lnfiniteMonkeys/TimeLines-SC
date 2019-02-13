@@ -45,6 +45,26 @@ SynthDef(\fm, {
 	Out.ar(\out.kr(), Pan2.ar(sig, pan_));
 }).add;
 
+SynthDef(\delay, {
+	var t = In.ar(\timerBus.kr());
+	var startTrig = In.ar(\startTriggerBus.kr());
+
+	var delayTime_ = BufRd.kr(1, Latch.ar(\delayTime.ar(), startTrig), t * BufFrames.kr(\delayTime.ar())).clip(0, ~maxDelayTime);
+	var decayTime_= BufRd.kr(1, Latch.ar(\decayTime.ar(), startTrig), t * BufFrames.kr(\decayTime.ar()));
+	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
+	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), startTrig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
+
+	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
+
+	var in = In.ar(\input.kr(), ~numChannels);
+
+	var sig = AllpassL.ar(in, ~maxDelayTime, delayTime_, decayTime_) * amp_;
+
+	Out.ar(\out.kr(), Pan2.ar(sig, pan_));
+}).add;
+
+
+
 SynthDef(\inputTest, {
 	var t = In.ar(\timerBus.kr());
 	var startTrig = In.ar(\startTriggerBus.kr());
@@ -115,11 +135,11 @@ SynthDef(\sawDFMdelay, {
 */
 
 SynthDef(\timer, {
-	var mute = 1 - \mute.kr(0);
+	var mute = (1 - \mute.kr(0)).clip(0, 1);
 
 	// Resetable looping phasor
 	var sig = Phasor.ar(
-		t_manualTrig,
+		\t_manualTrig.kr(0),
 		1 / (\dur.kr(1) * SampleRate.ir()),
 		\startPoint.kr(0),
 		//set loopPoint to 1 for looping, inf for no looping
@@ -133,11 +153,11 @@ SynthDef(\timer, {
 	then release the previous buffers and ask for the next batch
 	*/
 
-	var trigStart = Changed.ar(sig, 0.01) * mute;
+	var trigStart = Changed.ar(sig, 0.01) * mute + \t_manualStartTrig.kr(0);
 	var trigFreeOld = TDelay.ar(trigStart, 0.01) * mute;
 	var trigAskNext = TDelay.ar(trigStart, 0.015) * mute;
 
-	// Optional mute
+	// Muting timer signal after the `Changed` UGen
 	sig = sig * mute;
 
 	// Signals the looping back of the phasor
@@ -147,18 +167,18 @@ SynthDef(\timer, {
 	// Trigger for asking for next batch of buffers
 	SendTrig.ar(trigAskNext, 2, sig);
 
-
-
 	Out.ar(\startTriggerBus.kr(), trigStart);
 	Out.kr(\silencerBus.kr(), sig);
 	Out.ar(\out.kr(), sig.clip(0, 1));
 }).add;
 
+
 SynthDef(\silencer, {
+	var mute = (1 - \mute.kr(0)).clip(0, 1);
 	var phasor = In.kr(\timerBus.kr());
 
 	var switch = Lag2.kr(phasor < 1);
-	var signal = In.ar(\input.kr(), ~numChannels) * switch * (1 - \mute.kr(0));
+	var signal = In.ar(\input.kr(), ~numChannels) * switch * mute;
 
 	ReplaceOut.ar(\input.kr(), signal);
 }).add;
