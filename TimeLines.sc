@@ -33,7 +33,6 @@ TimeLines {
 		server.waitForBoot {
 			"Booting TimeLines...".postln;
 			~timelines = TimeLines(numChannels, server);
-			~timelines.startSynths;
 			//ServerTree.add(TimeLines.start, server);
 			"TimeLines: Initialization completed successfully\nListening on port %\n".format(NetAddr.langPort).postln;
 		};
@@ -54,6 +53,7 @@ TimeLines {
 		this.initCoreVariables;
 		this.loadDefs;
 		server.sync;
+		this.startCoreSynths;
 	}
 
 	initCoreVariables {
@@ -83,7 +83,7 @@ TimeLines {
 	}
 
 	// Instantiate timer and silencer synths
-	startSynths {
+	startCoreSynths {
 		timerSynth = Synth(\timer, [
 			\dur, windowDur,
 			\loopPoint, 1,
@@ -98,7 +98,7 @@ TimeLines {
 			\input, mainOutputBus
 		], postSynthGroup);
 
-		this.debugPrint("startSynths");
+		this.debugPrint("startCoreSynths");
 	}
 
 
@@ -130,6 +130,7 @@ TimeLines {
 		//this.askEvalSession;
 
 		this.freeAllSynths;
+		//synthDict.clear;
 
 		fork {
 			// Keep checking for all synths to be instantiated
@@ -147,12 +148,12 @@ TimeLines {
 		};
 	}
 
-	releaseBuffers {
+	activateReceivedBuffers {
 		Routine.run {
 			server.sync;
 
 			timerSynth.set(\t_manualStartTrig, 1);
-			this.debugPrint("releaseBuffers");
+			this.debugPrint("activateReceivedBuffers");
 		}
 	}
 
@@ -175,8 +176,6 @@ TimeLines {
 		var newMode = newSession[0].asSymbol;
 		var newSynthNames = newSession.drop(1).collect{ |i| i.asSymbol};
 		var synthsToRemove = synthDict.keys.difference(newSynthNames);
-
-		this.debugPrint("setSession synthsToRemove: %".format(synthsToRemove));
 
 		// Free synths that aren't active anymore, unless switching from infinite to finite modes
 		// (which frees all synths anyway)
@@ -283,6 +282,12 @@ TimeLines {
 					});
 			});
 
+			// Update synth immediately if in finite mode
+			if(sessionMode == 'FiniteMode', {
+				server.sync;
+				synth.set(\t_manualStartTrig, 1);
+			});
+
 			this.debugPrint("loadSynthBuffers");
 		};
 	}
@@ -327,49 +332,35 @@ TimeLines {
 		};
 	}
 
-	// Free synths, buffers, and synth buses
 	freeAllSynths {
-		synthGroup.free;
-		synthGroup = Group.after(timerGroup);
-		synthDict = Dictionary();
+		Routine.run {
+			server.sync;
 
-		bufferDict.do{ |b| b.free };
-		bufferDict.clear;
-		inputBusDict.do{ |b| b.free };
-		inputBusDict.clear;
+			synthGroup.free;
+			synthGroup = Group.after(timerGroup);
+			synthDict = Dictionary();
 
-		this.debugPrint("freeAllSynths");
-	}
+			inputBusDict.do{ |b| b.free };
+			inputBusDict.clear;
 
-	freeAll {
-		// Free all busses
-		timerBus.free;
-		silencerBus.free;
-		startTriggerBus.free;
-		inputBusDict.do{ |b| b.free };
-		inputBusDict.clear;
+			bufferDict.do{ |b| b.free };
+			bufferDict.clear;
 
-
-		// Free all groups and their synths
-		timerGroup.free;
-		synthGroup.free;
-		postSynthGroup.free;
-
-		// Free all Buffers
-		this.freeOldBuffers;
-		bufferDict.do{ |b| b.free};
-		bufferDict.clear;
-
-		this.debugPrint("freeAll");
+			this.debugPrint("freeAllSynths");
+		}
 	}
 
 	resetServer {
+		server.freeAll;
+		this.init;
+	}
+
+
+	resetSession {
 		sessionMode = 'FiniteMode';
-		this.freeAll;
-		this.initCoreVariables;
+		this.freeAllSynths;
 		this.loadDefs;
-		this.startSynths;
-		"TimeLines: server reset successfully".postln;
+		"TimeLines: session reset successfully".postln;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////
@@ -400,7 +391,7 @@ TimeLines {
 
 	////////////////// utils
 	debugPrint { |funcName|
-		if(b_debugging, {"DEBUG: % done".format(funcName.asString).postln});
+		if(b_debugging, {"DEBUG: % done, t = %".format(funcName.asString, Clock.seconds).postln});
 	}
 
 	invalidArgumentPrint { |funcName, argument|

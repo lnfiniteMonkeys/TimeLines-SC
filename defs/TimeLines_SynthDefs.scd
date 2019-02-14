@@ -4,30 +4,9 @@
 ~fadeInTime = 0.5;
 ~maxDelayTime = 10;
 
-SynthDef(\noiseLPFdelay, {
-	var t = In.ar(\timerBus.kr());
-	var startTrig = In.ar(\startTriggerBus.kr());
-
-	var cutoff_ = BufRd.kr(1, Latch.ar(\cutoff.ar(), startTrig), t * BufFrames.kr(\cutoff.ar())).clip(20, 20000);
-	var resonance_ = BufRd.kr(1, Latch.ar(\resonance.ar(), startTrig), t * BufFrames.kr(\resonance.ar())).clip(0.01, 5);
-	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
-	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), startTrig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
-	var delayTime_ = BufRd.kr(1, Latch.ar(\delayTime.ar(), startTrig), t * BufFrames.kr(\delayTime.ar()));
-	var decayTime_ = BufRd.kr(1, Latch.ar(\decayTime.ar(), startTrig), t * BufFrames.kr(\decayTime.ar()));
-
-	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
-
-	var sig = WhiteNoise.ar() * amp_ * env;
-
-	sig = RLPF.ar(sig, cutoff_, resonance_);
-	sig = AllpassC.ar(sig, ~maxDelayTime, delayTime_, decayTime_);
-
-	Out.ar(\out.kr(), Pan2.ar(sig, pan_));
-}).add;
-
 SynthDef(\fm, {
 	var t = In.ar(\timerBus.kr());
-	var startTrig = In.ar(\startTriggerBus.kr());
+	var startTrig = In.ar(\startTriggerBus.kr()) + \t_manualStartTrig.kr(0);
 
 	var freq_ = BufRd.kr(1, Latch.ar(\freq.ar(), startTrig), t * BufFrames.kr(\freq.ar())).clip(20, 20000);
 	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
@@ -47,7 +26,7 @@ SynthDef(\fm, {
 
 SynthDef(\delay, {
 	var t = In.ar(\timerBus.kr());
-	var startTrig = In.ar(\startTriggerBus.kr());
+	var startTrig = In.ar(\startTriggerBus.kr()) + \t_manualStartTrig.kr(0);
 
 	var delayTime_ = BufRd.kr(1, Latch.ar(\delayTime.ar(), startTrig), t * BufFrames.kr(\delayTime.ar())).clip(0, ~maxDelayTime);
 	var decayTime_= BufRd.kr(1, Latch.ar(\decayTime.ar(), startTrig), t * BufFrames.kr(\decayTime.ar()));
@@ -67,7 +46,7 @@ SynthDef(\delay, {
 
 SynthDef(\inputTest, {
 	var t = In.ar(\timerBus.kr());
-	var startTrig = In.ar(\startTriggerBus.kr());
+	var startTrig = In.ar(\startTriggerBus.kr()) + \t_manualStartTrig.kr(0);
 
 	var cutoff_ = BufRd.kr(1, Latch.ar(\cutoff.ar(), startTrig), t * BufFrames.kr(\cutoff.ar())).clip(20, 20000);
 	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
@@ -136,11 +115,12 @@ SynthDef(\sawDFMdelay, {
 
 SynthDef(\timer, {
 	var mute = (1 - \mute.kr(0)).clip(0, 1);
+	var dur = 1 / (\dur.kr(1) * SampleRate.ir());
 
 	// Resetable looping phasor
 	var sig = Phasor.ar(
 		\t_manualTrig.kr(0),
-		1 / (\dur.kr(1) * SampleRate.ir()),
+		dur,
 		\startPoint.kr(0),
 		//set loopPoint to 1 for looping, inf for no looping
 		\loopPoint.kr(1),
@@ -154,8 +134,8 @@ SynthDef(\timer, {
 	*/
 
 	var trigStart = Changed.ar(sig, 0.01) * mute + \t_manualStartTrig.kr(0);
-	var trigFreeOld = TDelay.ar(trigStart, 0.01) * mute;
-	var trigAskNext = TDelay.ar(trigStart, 0.015) * mute;
+	var trigFreeOld = TDelay.ar(trigStart, dur*0.9) * mute;
+	var trigAskNext = TDelay.ar(trigStart, 0.01) * mute;
 
 	// Muting timer signal after the `Changed` UGen
 	sig = sig * mute;
