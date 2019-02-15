@@ -40,6 +40,7 @@ OSCdef(\TimeLines_setLoop, { |msg, time, addr, recvPort|
 }, "/TimeLines/setLoop").add;
 
 OSCdef(\TimeLines_setSession, { |msg, time, addr, recvPort|
+	"function called".postln;
 	~timelines.debugPrint("OSC-setSession");
 	~timelines.setSession(msg.drop(1));
 }, "/TimeLines/setSession").add;
@@ -60,10 +61,10 @@ OSCdef(\TimeLines_setMute, { |msg, time, addr, recvPort|
 	~timelines.setMute(msg[1].asInt);
 }, "/TimeLines/setMute").add;
 
-OSCdef(\TimeLines_resetServer, {
-	~timelines.debugPrint("OSC-resetServer");
-	~timelines.resetServer;
-}, "/TimeLines/resetServer").add;
+OSCdef(\TimeLines_resetSession, {
+	~timelines.debugPrint("OSC-resetSession");
+	~timelines.resetSession;
+}, "/TimeLines/resetSession").add;
 
 "TimeLines: OSCDefs loaded".postln;
 )

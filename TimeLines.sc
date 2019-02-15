@@ -17,10 +17,10 @@ TimeLines {
 	var <timerGroup, <synthGroup, <postSynthGroup;
 	var <windowDur = 0.5, <loop = 1;
 	var <ghcAddress;
-	var <mainOutputBus, <silencerBus, <timerBus, <startTriggerBus;
+	var <mainOutputBus, <silencerBus, <timerBus, <activateBufsTriggerBus;
 	var <synthFadeInTime = 1, <synthFadeOutTime = 1;
 	var <timerSynth, <silencerSynth;
-	var <>b_debugging = false;
+	var <>b_debugging = true;
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// 1. Boot up
@@ -31,10 +31,13 @@ TimeLines {
 		server = server ? Server.default;
 
 		server.waitForBoot {
-			"Booting TimeLines...".postln;
-			~timelines = TimeLines(numChannels, server);
-			//ServerTree.add(TimeLines.start, server);
-			"TimeLines: Initialization completed successfully\nListening on port %\n".format(NetAddr.langPort).postln;
+			Routine.run {
+				"Booting TimeLines...".postln;
+				~timelines = TimeLines(numChannels, server);
+				//ServerTree.add(TimeLines.start, server);
+				server.sync;
+				"TimeLines: Initialization completed successfully\nListening on port %\n".format(NetAddr.langPort).postln;
+			}
 		};
 
 		server.latency = 0.1;
@@ -60,7 +63,7 @@ TimeLines {
 		mainOutputBus = 0;
 		timerBus= Bus.audio(server, 1);
 		silencerBus = Bus.audio(server, 1);
-		startTriggerBus = Bus.audio(server, 1);
+		activateBufsTriggerBus = Bus.audio(server, 1);
 
 		buffersToFree = List.newClear();
 		ghcAddress = NetAddr("127.0.0.1", 55800);
@@ -89,13 +92,13 @@ TimeLines {
 			\loopPoint, 1,
 			\out, timerBus,
 			\silencerBus, silencerBus,
-			\startTriggerBus, startTriggerBus,
+			\activateBufsTriggerBus, activateBufsTriggerBus,
 			\mute, 1 // mute by default
 		], timerGroup);
 
 		silencerSynth = Synth(\silencer, [
 			\timerBus, timerBus,
-			\input, mainOutputBus
+			\bus, mainOutputBus
 		], postSynthGroup);
 
 		this.debugPrint("startCoreSynths");
@@ -142,6 +145,7 @@ TimeLines {
 			// Then unmute timer and silencer synths and start playing
 			timerSynth.set(\mute, 0);
 			timerSynth.set(\t_manualTrig, 1);
+			timerSynth.set(\t_manualActivateBufsTrig, 1);
 			silencerSynth.set(\mute, 0);
 
 			this.debugPrint("switchToInfiniteMode");
@@ -152,7 +156,7 @@ TimeLines {
 		Routine.run {
 			server.sync;
 
-			timerSynth.set(\t_manualStartTrig, 1);
+			timerSynth.set(\t_manualActivateBufsTrig, 1);
 			this.debugPrint("activateReceivedBuffers");
 		}
 	}
@@ -202,7 +206,7 @@ TimeLines {
 		// Free all old buffers
 		buffersToFree.do({ |b| b.free });
 		buffersToFree.clear;
-		this.debugPrint("freeOldBuffers");
+		//this.debugPrint("freeOldBuffers");
 	}
 
 	setMute { |x|
@@ -225,7 +229,7 @@ TimeLines {
 		var coreSynthArgs = [
 			\out, mainOutputBus,
 			\timerBus, timerBus,
-			\startTriggerBus, startTriggerBus
+			\activateBufsTriggerBus, activateBufsTriggerBus
 		];
 
 		var buffers = Dictionary();
@@ -285,7 +289,7 @@ TimeLines {
 			// Update synth immediately if in finite mode
 			if(sessionMode == 'FiniteMode', {
 				server.sync;
-				synth.set(\t_manualStartTrig, 1);
+				synth.set(\t_manualActivateBufsTrig, 1);
 			});
 
 			this.debugPrint("loadSynthBuffers");
@@ -355,7 +359,6 @@ TimeLines {
 		this.init;
 	}
 
-
 	resetSession {
 		sessionMode = 'FiniteMode';
 		this.freeAllSynths;
@@ -384,7 +387,11 @@ TimeLines {
 
 	// Expects symbols
 	patchFromTo { |synth1, synth2|
-		synthDict[synth1].set(\out, inputBusDict[synth2]);
+		if(synth2 == 'mainOut', {
+			synthDict[synth1].set(\out, mainOutputBus);
+		}, {
+			synthDict[synth1].set(\out, inputBusDict[synth2]);
+		});
 		this.debugPrint("patchFromTo");
 	}
 
