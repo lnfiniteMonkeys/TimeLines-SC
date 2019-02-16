@@ -19,7 +19,7 @@ TimeLines {
 	var <ghcAddress;
 	var <mainOutputBus, <silencerBus, <timerBus, <activateBufsTriggerBus;
 	var <synthFadeInTime = 1, <synthFadeOutTime = 1;
-	var <timerSynth, <silencerSynth;
+	var <timerSynth, <silencerSynth, <limiterSynth, <reverbSynth;
 	var <>b_debugging = true;
 
 	////////////////////////////////////////////////////////////////////////////////////
@@ -66,7 +66,7 @@ TimeLines {
 		activateBufsTriggerBus = Bus.audio(server, 1);
 
 		buffersToFree = List.newClear();
-		ghcAddress = NetAddr("127.0.0.1", 55800);
+		ghcAddress = NetAddr("127.0.0.1", 70000);
 
 		bufferDict = Dictionary();
 		synthDict = Dictionary();
@@ -96,10 +96,20 @@ TimeLines {
 			\mute, 1 // mute by default
 		], timerGroup);
 
+		reverbSynth = Synth(\reverb,  [
+			\bus, mainOutputBus,
+			\predelay, 0.1,
+			\revtime, 1.8,
+			\lpf, 4500,
+			\mix, 0.15
+		], postSynthGroup, 'addToHead');
+
 		silencerSynth = Synth(\silencer, [
 			\timerBus, timerBus,
 			\bus, mainOutputBus
-		], postSynthGroup);
+		], postSynthGroup, 'addToHead');
+
+		limiterSynth = Synth(\limiter, [\bus, mainOutputBus], postSynthGroup, 'addToTail');
 
 		this.debugPrint("startCoreSynths");
 	}

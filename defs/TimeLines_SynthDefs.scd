@@ -35,10 +35,21 @@ SynthDef(__, {
 
 */
 
+SynthDef(\testMultichannel, {
+	var sig = PinkNoise.ar(0.2);
+
+	Out.ar(\out.kr(),
+		PanAz.ar(~numChannels, sig, \pan.kr(0),
+			width: \width.kr(1),
+			orientation: \orientation.kr(0.5))
+	);
+}).add;
+
+
 SynthDef(\RLPF, {
 	var t = In.ar(\timerBus.kr());
 	var startTrig = In.ar(\activateBufsTriggerBus.kr()) + \t_manualActivateBufsTrig.kr(0);
-      var in = In.ar(\input.kr(), ~numChannels);
+	var in = In.ar(\input.kr(), ~numChannels);
 
 	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
 	var freq_ = BufRd.kr(1, Latch.ar(\freq.ar(), startTrig), t * BufFrames.kr(\freq.ar()));
@@ -52,10 +63,28 @@ SynthDef(\RLPF, {
 	Out.ar(\out.kr(), env * PanAz.ar(~numChannels, sig, pan_, width: ~panWidth, orientation: ~panOrientation));
 }).add;
 
+SynthDef(\DFM, {
+	var t = In.ar(\timerBus.kr());
+	var startTrig = In.ar(\activateBufsTriggerBus.kr()) + \t_manualActivateBufsTrig.kr(0);
+	var in = In.ar(\input.kr(), ~numChannels);
+
+	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
+	var freq_ = BufRd.kr(1, Latch.ar(\freq.ar(), startTrig), t * BufFrames.kr(\freq.ar()));
+	var rq_ = BufRd.kr(1, Latch.ar(\res.ar(), startTrig), t * BufFrames.kr(\res.ar()));
+	var gain_ = BufRd.kr(1, Latch.ar(\gain.ar(), startTrig), t * BufFrames.kr(\gain.ar()));
+	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), startTrig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
+
+	var sig = DFM1.ar(in, freq_, rq_, gain_) * amp_;
+
+	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
+	Out.ar(\out.kr(), env * PanAz.ar(~numChannels, sig, pan_, width: ~panWidth, orientation: ~panOrientation));
+}).add;
+
+
 SynthDef(\moogLPF, {
 	var t = In.ar(\timerBus.kr());
 	var startTrig = In.ar(\activateBufsTriggerBus.kr()) + \t_manualActivateBufsTrig.kr(0);
-      var in = In.ar(\input.kr(), ~numChannels);
+	var in = In.ar(\input.kr(), ~numChannels);
 
 	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
 	var freq_ = BufRd.kr(1, Latch.ar(\freq.ar(), startTrig), t * BufFrames.kr(\freq.ar()));
@@ -77,18 +106,65 @@ SynthDef(\fm, {
 	var freq_ = BufRd.kr(1, Latch.ar(\freq.ar(), startTrig), t * BufFrames.kr(\freq.ar())).clip(20, 20000);
 	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
 	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), startTrig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
-
 	var ratio_ = BufRd.kr(1, Latch.ar(\ratio.ar(), startTrig), t * BufFrames.kr(\ratio.ar()));
 	var index_ = BufRd.kr(1, Latch.ar(\index.ar(), startTrig), t * BufFrames.kr(\index.ar()));
 
-	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
-
 	var modFreq = freq_*ratio_;
 	var mod = SinOsc.ar(modFreq)*index_;
-	var sig = SinOsc.ar(freq_ + mod) * amp_ * env;
+	var sig = SinOsc.ar(freq_ + mod) * amp_;
 
-	Out.ar(\out.kr(), Pan2.ar(sig, pan_));
+	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
+	Out.ar(\out.kr(), env * PanAz.ar(~numChannels, sig, pan_, width: ~panWidth, orientation: ~panOrientation));
 }).add;
+
+SynthDef(\improVis, {
+	var t = In.ar(\timerBus.kr());
+	var startTrig = In.ar(\activateBufsTriggerBus.kr()) + \t_manualActivateBufsTrig.kr(0);
+
+	var p1 = BufRd.kr(1, Latch.ar(\p1.ar(), startTrig), t * BufFrames.kr(\p1.ar()));
+	var p2 = BufRd.kr(1, Latch.ar(\p2.ar(), startTrig), t * BufFrames.kr(\p2.ar()));
+	var p3 = BufRd.kr(1, Latch.ar(\p3.ar(), startTrig), t * BufFrames.kr(\p3.ar()));
+	var p4 = BufRd.kr(1, Latch.ar(\p4.ar(), startTrig), t * BufFrames.kr(\p4.ar()));
+
+	var trig = Impulse.kr(30);
+
+	SendTrig.kr(trig, 15, p1);
+	SendTrig.kr(trig, 16, p2);
+	SendTrig.kr(trig, 17, p3);
+	SendTrig.kr(trig, 18, p4);
+}).add;
+
+
+
+
+SynthDef(\saw, {
+	var t = In.ar(\timerBus.kr());
+	var startTrig = In.ar(\activateBufsTriggerBus.kr()) + \t_manualActivateBufsTrig.kr(0);
+
+	var freq_ = BufRd.kr(1, Latch.ar(\freq.ar(), startTrig), t * BufFrames.kr(\freq.ar())).clip(20, 20000);
+	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
+	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), startTrig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
+	var width_ = BufRd.kr(1, Latch.ar(\width.ar(), startTrig), t * BufFrames.kr(\width.ar()));
+
+	var sig = VarSaw.ar(freq_, width: width_) * amp_;
+
+	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
+	Out.ar(\out.kr(), env * PanAz.ar(~numChannels, sig, pan_, width: ~panWidth, orientation: ~panOrientation));
+}).add;
+
+SynthDef(\noise, {
+	var t = In.ar(\timerBus.kr());
+	var startTrig = In.ar(\activateBufsTriggerBus.kr()) + \t_manualActivateBufsTrig.kr(0);
+
+	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(20, 20000);
+	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), startTrig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
+
+	var sig = WhiteNoise.ar() * amp_;
+
+	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
+	Out.ar(\out.kr(), env * PanAz.ar(~numChannels, sig, pan_, width: ~panWidth, orientation: ~panOrientation));
+}).add;
+
 
 SynthDef(\delay, {
 	var t = In.ar(\timerBus.kr());
@@ -99,31 +175,14 @@ SynthDef(\delay, {
 	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
 	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), startTrig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
 
-	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
-
 	var in = In.ar(\input.kr(), ~numChannels);
 
 	var sig = AllpassL.ar(in, ~maxDelayTime, delayTime_, decayTime_) * amp_;
 
-	Out.ar(\out.kr(), Pan2.ar(sig, pan_));
-}).add;
-
-
-
-SynthDef(\inputTest, {
-	var t = In.ar(\timerBus.kr());
-	var startTrig = In.ar(\activateBufsTriggerBus.kr()) + \t_manualActivateBufsTrig.kr(0);
-
-	var cutoff_ = BufRd.kr(1, Latch.ar(\cutoff.ar(), startTrig), t * BufFrames.kr(\cutoff.ar())).clip(20, 20000);
-	var amp_ = BufRd.kr(1, Latch.ar(\amp.ar(), startTrig), t * BufFrames.kr(\amp.ar())).clip(0, 1);
-	var pan_ = BufRd.kr(1, Latch.ar(\pan.ar(), startTrig), t * BufFrames.kr(\pan.ar())).clip(-1, 1);
-
 	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
-
-	var sig = RLPF.ar(In.ar(\input.kr()), cutoff_, 1) * env * amp_;
-
-	Out.ar(\out.kr(), Pan2.ar(sig, pan_));
+	Out.ar(\out.kr(), env * PanAz.ar(~numChannels, sig, pan_, width: ~panWidth, orientation: ~panOrientation));
 }).add;
+
 
 /*
 SynthDef(\sawDFMdelay, {
@@ -183,15 +242,24 @@ SynthDef(\silencer, {
 }).add;
 
 
-/*
+SynthDef(\limiter, {
+	var signal = In.ar(\bus.kr(), ~numChannels);
+	signal = Limiter.ar(signal, 0.95, 0.01);
+
+	ReplaceOut.ar(\bus.kr(), signal);
+}).add;
+
+
+
 //by Eli Fieldsteel
 SynthDef(\reverb, {
-	arg in, predelay=0.1, revtime=1.8,
-	lpf=4500, mix=0.15, amp=1, out=0;
+	arg predelay=0.1, revtime=1.8,
+	lpf=4500, mix=0.15, amp=1;
 
 	var dry, wet, temp, sig;
-	dry = In.ar(in,2);
-	temp = In.ar(in,2);
+
+	dry = In.ar(\bus.kr(), ~numChannels);
+	temp = In.ar(\bus.kr(), ~numChannels);
 	wet = 0;
 	temp = DelayN.ar(temp, 0,2, predelay);
 	16.do{
@@ -199,11 +267,12 @@ SynthDef(\reverb, {
 		temp = LPF.ar(temp, lpf);
 		wet = wet + temp;
 	};
+
 	sig = XFade2.ar(dry, wet, mix*2-1, amp);
 
-	Out.ar(out, sig);
+	ReplaceOut.ar(\bus.kr(), sig);
 }).add;
-*/
+
 
 
 /*
