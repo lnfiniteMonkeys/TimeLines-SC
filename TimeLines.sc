@@ -20,12 +20,13 @@ TimeLines {
 	var <mainOutputBus, <silencerBus, <timerBus, <activateBufsTriggerBus;
 	var <synthFadeInTime = 1, <synthFadeOutTime = 1;
 	var <timerSynth, <silencerSynth, <limiterSynth, <reverbSynth;
-	var <>b_debugging = true;
+	var <>b_debugging = false;
+	var <cmdPeriodFunc;
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// 1. Boot up
 
-	*start { |numChannels = 2, server|
+	*start { |numChannels = 2, server, cmdPeriodFunc|
 		~timelines.free;
 		//Use default server if one is not supplied
 		server = server ? Server.default;
@@ -33,18 +34,19 @@ TimeLines {
 		server.waitForBoot {
 			Routine.run {
 				"Booting TimeLines...".postln;
-				~timelines = TimeLines(numChannels, server);
+				~timelines = TimeLines(numChannels, server, cmdPeriodFunc);
 				//ServerTree.add(TimeLines.start, server);
 				server.sync;
 				"TimeLines: Initialization completed successfully\nListening on port %\n".format(NetAddr.langPort).postln;
 			}
 		};
 
+		CmdPeriod.add(this);
 		server.latency = 0.1;
 	}
 
-	*new { |numChannels = 2, server|
-		^super.newCopyArgs(numChannels, server ? Server.default).init;
+	*new { |numChannels = 2, server, cmdPeriodFunc|
+		^super.newCopyArgs(numChannels, server ? Server.default, cmdPeriodFunc).init;
 	}
 
 
@@ -57,6 +59,7 @@ TimeLines {
 		this.loadDefs;
 		server.sync;
 		this.startCoreSynths;
+
 	}
 
 	initCoreVariables {
@@ -176,9 +179,11 @@ TimeLines {
 			server.sync;
 
 			synthOrder.do({ |synthName, i|
-				if(i > 0, {
-					var prevSynth = synthDict[synthOrder[i - 1]];
-					synthDict[synthName].moveAfter(prevSynth)
+				if(synthName !=  'mainOut', {
+					if(i > 0, {
+						var prevSynth = synthDict[synthOrder[i - 1]];
+						synthDict[synthName].moveAfter(prevSynth)
+					});
 				});
 			});
 
@@ -405,7 +410,6 @@ TimeLines {
 		this.debugPrint("patchFromTo");
 	}
 
-
 	////////////////// utils
 	debugPrint { |funcName|
 		if(b_debugging, {"DEBUG: % done, t = %".format(funcName.asString, Clock.seconds).postln});
@@ -417,4 +421,10 @@ TimeLines {
 		.format(funcName, argument, argument.class).postln;
 	}
 
+	*cmdPeriod {
+		"Hello from the inside before!".postln;
+		//cmdPeriodFunc;
+		~timelinesCmdPeriod.value;
+		"Hello from the inside after!".postln;
+	}
 }
