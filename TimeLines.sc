@@ -26,7 +26,7 @@ TimeLines {
 	////////////////////////////////////////////////////////////////////////////////////
 	// 1. Boot up
 
-	*start { |numChannels = 2, server, cmdPeriodFunc|
+	*start { |numChannels = 2, server|
 		~timelines.free;
 		//Use default server if one is not supplied
 		server = server ? Server.default;
@@ -34,7 +34,7 @@ TimeLines {
 		server.waitForBoot {
 			Routine.run {
 				"Booting TimeLines...".postln;
-				~timelines = TimeLines(numChannels, server, cmdPeriodFunc);
+				~timelines = TimeLines(numChannels, server);
 				//ServerTree.add(TimeLines.start, server);
 				server.sync;
 				"TimeLines: Initialization completed successfully\nListening on port %\n".format(NetAddr.langPort).postln;
@@ -45,8 +45,8 @@ TimeLines {
 		server.latency = 0.1;
 	}
 
-	*new { |numChannels = 2, server, cmdPeriodFunc|
-		^super.newCopyArgs(numChannels, server ? Server.default, cmdPeriodFunc).init;
+	*new { |numChannels = 2, server|
+		^super.newCopyArgs(numChannels, server ? Server.default).init;
 	}
 
 
@@ -99,13 +99,13 @@ TimeLines {
 			\mute, 1 // mute by default
 		], timerGroup);
 
-		reverbSynth = Synth(\reverb,  [
+		/*reverbSynth = Synth(\reverb,  [
 			\bus, mainOutputBus,
 			\predelay, 0.1,
 			\revtime, 1.8,
 			\lpf, 4500,
 			\mix, 0.15
-		], postSynthGroup, 'addToHead');
+		], postSynthGroup, 'addToHead');*/
 
 		silencerSynth = Synth(\silencer, [
 			\timerBus, timerBus,
@@ -422,9 +422,6 @@ TimeLines {
 	}
 
 	*cmdPeriod {
-		"Hello from the inside before!".postln;
-		//cmdPeriodFunc;
 		~timelinesCmdPeriod.value;
-		"Hello from the inside after!".postln;
 	}
 }

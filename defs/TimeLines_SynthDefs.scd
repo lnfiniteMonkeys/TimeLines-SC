@@ -58,7 +58,7 @@ SynthDef(\operator, {
 	var freq = BufRd.kr(1, Latch.ar(\freq.ar(), startTrig), t * BufFrames.kr(\freq.ar()));
 	var amt = BufRd.kr(1, Latch.ar(\amt.ar(), startTrig), t * BufFrames.kr(\amt.ar()));
 
-	var in = In.ar(\input.kr(), 1).linexp(-1, 1, amt.neg, amt);
+	var in = In.ar(\input.kr(), 1).linlin(-1, 1, amt.neg, amt);
 
 	var sig = SinOsc.ar(freq + in) * amp;
 
@@ -137,6 +137,7 @@ SynthDef(\moogLPF, {
 }).add;
 
 
+
 SynthDef(\fm, {
 	var t = In.ar(\timerBus.kr());
 	var startTrig = In.ar(\activateBufsTriggerBus.kr()) + \t_manualActivateBufsTrig.kr(0);
@@ -185,7 +186,7 @@ SynthDef(\saw, {
 	var sig = VarSaw.ar(freq, width: width) * amp;
 
 	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
-	Out.ar(\out.kr(), env * PanAz.ar(~numChannels, sig, pan, width: ~panWidth, orientation: ~panOrientation));
+	Out.ar(\out.kr(), env * Pan2.ar(sig, pan));
 }).add;
 
 SynthDef(\noise, {
@@ -215,7 +216,7 @@ SynthDef(\delay, {
 	var sig = AllpassL.ar(in, ~maxDelayTime, delayTime_, decayTime_) * amp;
 
 	var env = Linen.kr(\gate.kr(1), ~fadeInTime, 1, ~fadeOutTime, 2);
-	Out.ar(\out.kr(), env * PanAz.ar(~numChannels, sig, pan, width: ~panWidth, orientation: ~panOrientation));
+	Out.ar(\out.kr(), env * Pan2.ar(sig, pan));
 }).add;
 
 
@@ -277,7 +278,27 @@ SynthDef(\limiter, {
 	ReplaceOut.ar(\bus.kr(), signal);
 }).add;
 
+//by Eli Fieldsteel
+SynthDef(\reverb, {
+	arg predelay=0.1, revtime=1.8,
+	lpf=4500, mix=0.15, amp=1;
 
+	var dry, wet, temp, sig;
+
+	dry = In.ar(\bus.kr(), ~numChannels);
+	temp = In.ar(\bus.kr(), ~numChannels);
+	wet = 0;
+	temp = DelayN.ar(temp, 0,2, predelay);
+	16.do{
+		temp = AllpassN.ar(temp, 0.05, {Rand(0.001,0.05)}!2, revtime);
+		temp = LPF.ar(temp, lpf);
+		wet = wet + temp;
+	};
+
+	sig = XFade2.ar(dry, wet, mix*2-1, amp);
+
+	ReplaceOut.ar(\bus.kr(), sig);
+}).add;
 
 //by Eli Fieldsteel
 SynthDef(\reverb, {
