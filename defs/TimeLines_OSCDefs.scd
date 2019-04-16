@@ -1,14 +1,16 @@
 (
 
+~addr = NetAddr("10.10.10.1", 12345);
+
 //~debugArgs( |arg| "arg: ".format(arg).postln; "arg class: %".format(arg.class).postln;)
 OSCdef(\TimeLines_triggers, { |msg, time, addr, recvPort|
 	if(msg[2] == 1, {~timelines.freeOldBuffers});
 	if(msg[2] == 2, {~timelines.askNextBuffers});
 
-	if(msg[2] == 15, { ~improVisAddr.sendMsg("/vars/p1", msg[3]) });
-	if(msg[2] == 16, { ~improVisAddr.sendMsg("/vars/p2", msg[3]) });
-	if(msg[2] == 17, { ~improVisAddr.sendMsg("/vars/p3", msg[3]) });
-	if(msg[2] == 18, { ~improVisAddr.sendMsg("/vars/p4", msg[3]) });
+	if(msg[2] == 15, { ~addr.sendMsg("/vars/p1", msg[3]) });
+	if(msg[2] == 16, { ~addr.sendMsg("/vars/p2", msg[3]) });
+	if(msg[2] == 17, { ~addr.sendMsg("/vars/p3", msg[3]) });
+	if(msg[2] == 18, { ~addr.sendMsg("/vars/p4", msg[3]) });
 
 	//if(msg[2] == 2, {"start of cycle".postln});
 }, '/tr', s.addr);

@@ -19,7 +19,7 @@ TimeLines {
 	var <ghcAddress;
 	var <mainOutputBus, <silencerBus, <timerBus, <activateBufsTriggerBus;
 	var <synthFadeInTime = 1, <synthFadeOutTime = 1;
-	var <timerSynth, <silencerSynth, <limiterSynth, <reverbSynth;
+	var <timerSynth, <silencerSynth, <limiterSynth, <reverbSynth, <compressorSynth;
 	var <>b_debugging = false;
 	var <cmdPeriodFunc;
 
@@ -99,20 +99,29 @@ TimeLines {
 			\mute, 1 // mute by default
 		], timerGroup);
 
-		/*reverbSynth = Synth(\reverb,  [
+		compressorSynth = Synth(\compressor, [
+			\bus, mainOutputBus,
+			\thresh, 0.5,
+			\slopeBelow, 1,
+			\slopeAbove, 1,
+			\clampTime, 0.01,
+			\relaxTime, 0.1
+		], postSynthGroup	, \addToTail);
+
+		reverbSynth = Synth(\reverb,  [
 			\bus, mainOutputBus,
 			\predelay, 0.1,
 			\revtime, 1.8,
 			\lpf, 4500,
 			\mix, 0.15
-		], postSynthGroup, 'addToHead');*/
+		], postSynthGroup, \addToTail);
 
 		silencerSynth = Synth(\silencer, [
 			\timerBus, timerBus,
 			\bus, mainOutputBus
-		], postSynthGroup, 'addToHead');
+		], postSynthGroup, \addToTail);
 
-		limiterSynth = Synth(\limiter, [\bus, mainOutputBus], postSynthGroup, 'addToTail');
+		limiterSynth = Synth(\limiter, [\bus, mainOutputBus], postSynthGroup, \addToTail);
 
 		this.debugPrint("startCoreSynths");
 	}
