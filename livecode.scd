@@ -8,8 +8,6 @@
 	~panWidth = 2;
 	~panOrientation = 1.5;
 
-	OSCdef.freeAll;
-
 	s.options.numBuffers = 2048;
 	s.options.numOutputBusChannels = ~numChannels;
 	s.options.memSize = 8192 * 10;
@@ -21,26 +19,40 @@
 ~timelinesCmdPeriod.value;
 )
 
+
+(
+~x = {PinkNoise.ar(0.2)!2}.play;
+)
+
+~x.free
+s.record("C:\\Users\\Carl\\Desktop\\monkeyStuff.wav");
+
+
+(
+s.stopRecording;
+)
+
 (
 s.meter;
 s.plotTree;
+
 )
 
 
 // REVERB
 (
 ~timelines.reverbSynth.set(
-	\predelay, 0.2,
-	\revtime, 2.8,
-	\lpf, 1500,
-	\mix, 0.65
+	\predelay, 0.13,
+	\revtime, 1.1,
+	\lpf, 4500,
+	\mix, 0.45
 );
 )
 
 // COMPRESSOR
 (
 ~timelines.compressorSynth.set(
-	\thresh, 0.7,
+	\thresh, 0.1,
 	\slopeBelow, 1.0,
 	\slopeAbove, 1.0,
 	\clampTime, 0.01,
@@ -62,3 +74,7 @@ TODO:
 - Sort out channel numbers w/ busses
 -
 */
+
+
+~timelines.bufferDict['s1_fm_freq'].plot
+~timelines.bufferDict['s1_fm_ratio'].plot
